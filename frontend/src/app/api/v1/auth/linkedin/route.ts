@@ -16,25 +16,10 @@ export async function GET(_request: Request) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const response = await fetch(`${BACKEND_URL}/user/dashboard`, {
-            headers: {
-                'Authorization': `Bearer ${session.access_token}`,
-            },
-            cache: 'no-store',
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            return NextResponse.json(
-                { error: 'Failed to fetch dashboard data', details: errorText },
-                { status: response.status }
-            );
-        }
-
-        const data = await response.json();
-        return NextResponse.json(data);
+        const redirectUrl = `${BACKEND_URL}/auth/linkedin?user_id=${session.user.id}`;
+        return NextResponse.redirect(redirectUrl);
     } catch (error: any) {
-        console.error('Error loading dashboard data:', error);
+        console.error('Error redirecting to LinkedIn auth:', error);
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 }

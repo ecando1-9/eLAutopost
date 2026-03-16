@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 
 interface DashboardData {
+    linkedin_connected: boolean;
     subscription: {
         status: string;
         trial_end?: string;
@@ -108,6 +109,17 @@ export default function UserDashboard() {
                             <div>
                                 <h1 className="text-xl font-bold text-gray-900">eLAutopost AI</h1>
                                 <p className="text-sm text-gray-500">{user?.email}</p>
+                                {data?.linkedin_connected ? (
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 border border-green-200 mt-1">
+                                        <CheckCircle2 className="h-3 w-3 mr-1" />
+                                        LinkedIn Connected
+                                    </span>
+                                ) : (
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800 border border-gray-200 mt-1">
+                                        <XCircle className="h-3 w-3 mr-1" />
+                                        LinkedIn Not Connected
+                                    </span>
+                                )}
                             </div>
                         </div>
 
@@ -136,6 +148,26 @@ export default function UserDashboard() {
                             </div>
                             <button className="ml-auto px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors">
                                 Upgrade Now
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* LinkedIn Connection Hero Banner (Pro UI) */}
+                {data && !data.linkedin_connected && (
+                    <div className="mb-8 bg-gradient-to-r from-blue-700 to-indigo-800 rounded-2xl p-8 shadow-xl text-white flex items-center justify-between relative overflow-hidden">
+                        <div className="absolute -top-24 -right-24 w-64 h-64 bg-white opacity-5 rounded-full blur-3xl"></div>
+                        <div className="relative z-10 max-w-2xl">
+                            <h2 className="text-2xl font-bold mb-2">Connect Your LinkedIn Account</h2>
+                            <p className="text-blue-100 mb-6 text-lg">
+                                Your account is not currently linked. To start generating personalized content and auto-posting directly to your feed, please authenticate with LinkedIn.
+                            </p>
+                            <button 
+                                onClick={() => window.location.href = `/api/v1/auth/linkedin?user_id=${user?.id}`}
+                                className="px-6 py-3 bg-white text-blue-700 hover:bg-blue-50 hover:shadow-lg rounded-xl font-bold transition-all flex items-center transform hover:-translate-y-0.5"
+                            >
+                                <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24"><path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/></svg>
+                                Connect Now
                             </button>
                         </div>
                     </div>

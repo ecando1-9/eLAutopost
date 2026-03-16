@@ -39,7 +39,7 @@ class PDFCarouselService:
             
         return slides
 
-    def generate_carousel(self, hook: str, caption: str, slides: list[str] = None, author_name: str = "Author") -> str:
+    def generate_carousel(self, hook: str, caption: str, slides: list[str] | None = None, author_name: str = "Author", theme: str = "indigo") -> str:
         """
         Generates a visually appealing PDF carousel and returns the file path.
         If 'slides' is provided, it uses them directly. Otherwise, it splits the caption.
@@ -60,7 +60,7 @@ class PDFCarouselService:
             c = canvas.Canvas(filepath, pagesize=(page_width, page_height))
             
             for index, slide_text in enumerate(final_slides):
-                self._draw_slide(c, slide_text, page_width, page_height, index + 1, len(final_slides), author_name)
+                self._draw_slide(c, slide_text, page_width, page_height, index + 1, len(final_slides), author_name, theme)
                 c.showPage()
                 
             c.save()
@@ -71,21 +71,33 @@ class PDFCarouselService:
             logger.error(f"Failed to generate PDF Carousel: {e}")
             raise Exception("PDF Carousel Generation failed.")
             
-    def _draw_slide(self, c: canvas.Canvas, text: str, width: float, height: float, current_page: int, total_pages: int, author: str):
-        """Draws an individual slide using reportlab."""
+    def _draw_slide(self, c: canvas.Canvas, text: str, width: float, height: float, current_page: int, total_pages: int, author: str, theme: str):
+        """Draws an individual slide using reportlab with theme support."""
+        
+        # Theme definitions (mapping Tailwind colors to Hex values)
+        themes = {
+            "indigo": {"bg": "#4F46E5", "text": "#FFFFFF", "accent": "#A5B4FC"},
+            "emerald": {"bg": "#059669", "text": "#FFFFFF", "accent": "#6EE7B7"},
+            "slate": {"bg": "#1E293B", "text": "#FFFFFF", "accent": "#94A3B8"},
+            "minimal": {"bg": "#FFFFFF", "text": "#111827", "accent": "#6B7280"},
+            "gradient": {"bg": "#F97316", "text": "#FFFFFF", "accent": "#FFEDD5"} # Using Orange base for Sunset Gradient
+        }
+        
+        t = themes.get(theme, themes["indigo"])
+        
         # Background
-        c.setFillColor(HexColor("#F5F7FA")) # Light grey/blue background
+        c.setFillColor(HexColor(t["bg"]))
         c.rect(0, 0, width, height, fill=True, stroke=False)
         
         # Author header
-        c.setFillColor(HexColor("#333333"))
+        c.setFillColor(HexColor(t["text"]))
         c.setFont("Helvetica-Bold", 14)
         c.drawString(0.5 * inch, height - 0.8 * inch, f"{author}")
         
         # We need a simple text wrapping mechanism because drawString doesn't wrap natively
         text_object = c.beginText(0.5 * inch, height - 2.5 * inch)
         text_object.setFont("Helvetica", 24)
-        text_object.setFillColor(HexColor("#1A1A1A"))
+        text_object.setFillColor(HexColor(t["text"]))
         
         # Text wrapping
         max_width = width - 1 * inch
@@ -107,7 +119,7 @@ class PDFCarouselService:
         
         # Footer / Page Number
         c.setFont("Helvetica", 12)
-        c.setFillColor(HexColor("#666666"))
+        c.setFillColor(HexColor(t["accent"]))
         c.drawString(width - 1.5 * inch, 0.5 * inch, f"Swipe ->   {current_page}/{total_pages}")
 
 

@@ -16,7 +16,7 @@ export async function GET(_request: Request) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const response = await fetch(`${BACKEND_URL}/user/dashboard`, {
+        const response = await fetch(`${BACKEND_URL}/auth/me?user_id=${session.user.id}`, {
             headers: {
                 'Authorization': `Bearer ${session.access_token}`,
             },
@@ -26,7 +26,7 @@ export async function GET(_request: Request) {
         if (!response.ok) {
             const errorText = await response.text();
             return NextResponse.json(
-                { error: 'Failed to fetch dashboard data', details: errorText },
+                { error: 'Failed to fetch user profile', details: errorText },
                 { status: response.status }
             );
         }
@@ -34,7 +34,7 @@ export async function GET(_request: Request) {
         const data = await response.json();
         return NextResponse.json(data);
     } catch (error: any) {
-        console.error('Error loading dashboard data:', error);
+        console.error('Error fetching user profile:', error);
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 }

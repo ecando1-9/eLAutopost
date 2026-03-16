@@ -38,8 +38,9 @@ router = APIRouter()
 class CarouselGenerationRequest(BaseModel):
     hook: str
     caption: str
-    slides: list[str] = None
+    slides: list[str] | None = None
     author_name: str = "LinkedIn Author"
+    theme: str = "indigo"
 
 
 # =============================================================================
@@ -109,7 +110,8 @@ async def generate_carousel_pdf(
             hook=carousel_request.hook,
             caption=carousel_request.caption,
             slides=carousel_request.slides,
-            author_name=carousel_request.author_name
+            author_name=carousel_request.author_name,
+            theme=carousel_request.theme
         )
         
         if not os.path.exists(filepath):
@@ -271,7 +273,7 @@ async def regenerate_image_prompt(
     topic: str,
     hook: str,
     content_type: ContentType,
-    user_id: str = None
+    user_id: str | None = None
 ):
     """
     Regenerate just the image prompt.

@@ -26,6 +26,7 @@ export interface User {
     last_login_at?: string;
     role: 'admin' | 'user';
     subscription_status: 'trial' | 'active' | 'expired' | 'cancelled' | 'blocked';
+    trial_start?: string;
     trial_end?: string;
     subscription_start?: string;
     renewal_date?: string;

@@ -43,6 +43,7 @@ async def lifespan(app: FastAPI):
     # Initialize background scheduler
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
     from .worker.posting import posting_worker
+    from .worker.auto_generator import auto_generator_worker
     
     scheduler = AsyncIOScheduler()
     
@@ -55,8 +56,17 @@ async def lifespan(app: FastAPI):
         replace_existing=True
     )
     
+    # Schedule auto-generator worker to run every 60 minutes
+    scheduler.add_job(
+        auto_generator_worker.process_auto_generation,
+        'interval',
+        minutes=60,
+        id='auto_generator',
+        replace_existing=True
+    )
+    
     scheduler.start()
-    logger.info("Background scheduler started - posting worker runs every 5 minutes")
+    logger.info("Background scheduler started - posting worker runs every 5 mins, auto-generator every arg 60 mins")
     
     yield
     

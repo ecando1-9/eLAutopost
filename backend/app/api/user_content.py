@@ -248,8 +248,22 @@ async def get_user_dashboard(
         
         recent_posts = recent_posts_result.data or []
         
+        # Check LinkedIn connection
+        linkedin_token = supabase_client.admin.table("linkedin_tokens").select(
+            "expires_at"
+        ).eq("user_id", user_id).execute()
+        
+        linkedin_connected = False
+        if linkedin_token.data:
+            from datetime import datetime
+            expires_at = datetime.fromisoformat(
+                linkedin_token.data[0]["expires_at"].replace("Z", "+00:00")
+            )
+            linkedin_connected = expires_at > datetime.utcnow()
+        
         return {
             "success": True,
+            "linkedin_connected": linkedin_connected,
             "subscription": subscription,
             "usage": usage,
             "schedule": schedule,

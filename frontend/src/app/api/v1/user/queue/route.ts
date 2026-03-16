@@ -7,7 +7,7 @@ const BACKEND_URL = RAW_BACKEND_URL.endsWith('/api/v1')
     ? RAW_BACKEND_URL
     : `${RAW_BACKEND_URL.replace(/\/$/, '')}/api/v1`;
 
-export async function GET(_request: Request) {
+export async function GET(request: Request) {
     try {
         const supabase = createRouteHandlerClient({ cookies });
         const { data: { session } } = await supabase.auth.getSession();
@@ -16,7 +16,15 @@ export async function GET(_request: Request) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const response = await fetch(`${BACKEND_URL}/user/dashboard`, {
+        const url = new URL(request.url);
+        const statusFilter = url.searchParams.get('status_filter');
+        const backendUrl = new URL(`${BACKEND_URL}/user/queue`);
+
+        if (statusFilter) {
+            backendUrl.searchParams.set('status_filter', statusFilter);
+        }
+
+        const response = await fetch(backendUrl.toString(), {
             headers: {
                 'Authorization': `Bearer ${session.access_token}`,
             },
@@ -26,7 +34,7 @@ export async function GET(_request: Request) {
         if (!response.ok) {
             const errorText = await response.text();
             return NextResponse.json(
-                { error: 'Failed to fetch dashboard data', details: errorText },
+                { error: 'Failed to fetch queue', details: errorText },
                 { status: response.status }
             );
         }
@@ -34,7 +42,7 @@ export async function GET(_request: Request) {
         const data = await response.json();
         return NextResponse.json(data);
     } catch (error: any) {
-        console.error('Error loading dashboard data:', error);
+        console.error('Error loading queue:', error);
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 }

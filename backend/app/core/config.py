@@ -70,6 +70,7 @@ class Settings(BaseSettings):
     # GOOGLE GEMINI CONFIGURATION (FREE TEXT GENERATION)
     # =============================================================================
     GOOGLE_API_KEY: Optional[str] = Field(default=None, env="GOOGLE_API_KEY")
+    GOOGLE_MODEL: str = Field(default="gemini-2.5-flash", env="GOOGLE_MODEL")
     
     # =============================================================================
     # LINKEDIN API CONFIGURATION

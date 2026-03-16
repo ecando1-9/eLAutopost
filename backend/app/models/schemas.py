@@ -276,6 +276,7 @@ class UserSettings(BaseModel):
     auto_post: bool = Field(default=False, description="Auto-post to LinkedIn")
     notification_email: bool = Field(default=True)
     preferred_content_types: List[ContentType] = Field(default=[])
+    max_posts_per_day: int = Field(default=3, ge=1, le=10, description="Max posts per day")
     
     @validator("default_tone")
     def sanitize_tone(cls, v):
@@ -289,6 +290,7 @@ class UserSettingsUpdate(BaseModel):
     auto_post: Optional[bool] = None
     notification_email: Optional[bool] = None
     preferred_content_types: Optional[List[ContentType]] = None
+    max_posts_per_day: Optional[int] = Field(None, ge=1, le=10)
     
     @validator("default_tone")
     def sanitize_tone(cls, v):

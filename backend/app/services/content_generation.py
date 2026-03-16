@@ -15,7 +15,8 @@ Security:
 """
 
 from typing import Dict, Any, Optional
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from ..core.config import settings, logger
 from ..core.security import sanitize_input
 from ..models.schemas import ContentType, GeneratedContent
@@ -35,13 +36,45 @@ class ContentGenerationService:
     def __init__(self):
         """Initialize the Gemini content strategist."""
         if settings.GOOGLE_API_KEY:
-            genai.configure(api_key=settings.GOOGLE_API_KEY)
-            self.model = genai.GenerativeModel('gemini-1.5-flash')
+            self.client = genai.Client(api_key=settings.GOOGLE_API_KEY)
+            self.model_name = settings.GOOGLE_MODEL
+            self.fallback_model_name = "gemini-2.5-flash"
             self.configured = True
         else:
-            self.model = None
+            self.client = None
+            self.model_name = settings.GOOGLE_MODEL
+            self.fallback_model_name = "gemini-2.5-flash"
             self.configured = False
             logger.warning("GOOGLE_API_KEY not set. Content generation will return mock data.")
+
+    def _generate_with_model_fallback(self, prompt: str, temperature: float):
+        """
+        Generate content using the configured model and fall back when it's unavailable.
+        """
+        try:
+            return self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(temperature=temperature),
+            )
+        except Exception as model_error:
+            error_text = str(model_error).lower()
+            should_fallback = (
+                self.model_name != self.fallback_model_name and
+                ("not found" in error_text or "not supported" in error_text or "404" in error_text)
+            )
+            if not should_fallback:
+                raise
+
+            logger.warning(
+                f"Configured model '{self.model_name}' unavailable. "
+                f"Retrying with '{self.fallback_model_name}'."
+            )
+            return self.client.models.generate_content(
+                model=self.fallback_model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(temperature=temperature),
+            )
             
     async def generate_content(
         self,
@@ -125,16 +158,24 @@ Respond ONLY with valid JSON.
             # Use async executor for the Gemini call
             loop = asyncio.get_event_loop()
             response = await loop.run_in_executor(
-                None, lambda: self.model.generate_content(
-                    master_prompt, 
-                    generation_config=genai.GenerationConfig(
-                        temperature=0.8,
-                        response_mime_type="application/json"
-                    )
+                None, lambda: self._generate_with_model_fallback(
+                    prompt=master_prompt,
+                    temperature=0.8,
                 )
             )
             
-            content_json = json.loads(response.text.strip())
+            # Clean potential markdown formatting
+            raw_text = (response.text or "").strip()
+            if not raw_text:
+                raise ValueError("Gemini returned an empty response.")
+            if raw_text.startswith("```json"):
+                raw_text = raw_text[7:]
+            if raw_text.startswith("```"):
+                raw_text = raw_text[3:]
+            if raw_text.endswith("```"):
+                raw_text = raw_text[:-3]
+                
+            content_json = json.loads(raw_text.strip())
             
             # Map content_type string to Enum
             raw_type = content_json.get("content_type", "insight").lower()
@@ -164,11 +205,13 @@ Respond ONLY with valid JSON.
     # Keeping helper methods if needed for partial regeneration later, but generate_content is now the main path.
     async def _async_generate(self, prompt: str, temperature: float = 0.7) -> str:
         loop = asyncio.get_event_loop()
-        config = genai.GenerationConfig(temperature=temperature)
         response = await loop.run_in_executor(
-            None, lambda: self.model.generate_content(prompt, generation_config=config)
+            None, lambda: self._generate_with_model_fallback(
+                prompt=prompt,
+                temperature=temperature,
+            )
         )
-        return response.text.strip()
+        return (response.text or "").strip()
     
     async def _classify_content_type(self, topic: str) -> ContentType:
         prompt = f"""Classify this topic into ONE of these categories:

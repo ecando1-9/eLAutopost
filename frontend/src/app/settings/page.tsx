@@ -31,6 +31,10 @@ export default function SettingsPage() {
     const [timezone, setTimezone] = useState('Asia/Kolkata');
     const [categories, setCategories] = useState<string[]>(['AI']);
     const [autoTopic, setAutoTopic] = useState(true);
+    
+    // Auth & Integration Info
+    const [userId, setUserId] = useState<string | null>(null);
+    const [isLinkedInConnected, setIsLinkedInConnected] = useState(false);
 
     const days = [
         { value: 'MON', label: 'Monday' },
@@ -62,6 +66,24 @@ export default function SettingsPage() {
         try {
             const session = await supabase.auth.getSession();
             const token = session.data.session?.access_token;
+            
+            // Get user info to check integrations
+            const userResponse = await supabase.auth.getUser();
+            if (userResponse.data.user) {
+                setUserId(userResponse.data.user.id);
+                // Also fetch full profile from our backend to check linkedin_connected
+                try {
+                    const profileRes = await fetch(`/api/v1/auth/me?user_id=${userResponse.data.user.id}`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (profileRes.ok) {
+                        const profileData = await profileRes.json();
+                        setIsLinkedInConnected(profileData.linkedin_connected);
+                    }
+                } catch (e) {
+                    console.error("Failed to fetch profile", e);
+                }
+            }
 
             const response = await fetch('/api/v1/user/schedule', {
                 headers: {
@@ -139,6 +161,15 @@ export default function SettingsPage() {
         } else {
             setCategories([...categories, category]);
         }
+    };
+
+    const handleConnectLinkedIn = () => {
+        if (!userId) {
+            setError("User not identified. Please wait for settings to finish loading.");
+            return;
+        }
+        // Redirect to Backend LinkedIn OAuth Flow
+        window.location.href = `/api/v1/auth/linkedin?user_id=${userId}`;
     };
 
     if (loading) {
@@ -324,12 +355,23 @@ export default function SettingsPage() {
                             <Linkedin className="h-12 w-12 mr-4" />
                             <div>
                                 <h2 className="text-lg font-semibold">LinkedIn Account</h2>
-                                <p className="text-sm text-blue-100">Connect your LinkedIn account to enable posting</p>
+                                <p className="text-sm text-blue-100">
+                                    {isLinkedInConnected ? "Your LinkedIn account is connected and ready for posting." : "Connect your LinkedIn account to enable posting"}
+                                </p>
                             </div>
                         </div>
-                        <button className="px-6 py-3 bg-white text-blue-600 rounded-lg font-semibold hover:bg-blue-50 transition-colors">
-                            Connect LinkedIn
-                        </button>
+                        {isLinkedInConnected ? (
+                            <button className="px-6 py-3 bg-green-500 text-white rounded-lg font-semibold cursor-default flex items-center">
+                                <CheckCircle2 className="h-5 w-5 mr-2" /> Connected
+                            </button>
+                        ) : (
+                            <button 
+                                onClick={handleConnectLinkedIn}
+                                className="px-6 py-3 bg-white text-blue-600 rounded-lg font-semibold hover:bg-blue-50 transition-colors"
+                            >
+                                Connect LinkedIn
+                            </button>
+                        )}
                     </div>
                 </div>
 

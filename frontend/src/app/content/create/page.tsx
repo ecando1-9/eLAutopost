@@ -94,6 +94,16 @@ export default function CreateContentPage() {
     const [result, setResult] = useState<any>(null);
     const [pdfUrl, setPdfUrl] = useState<string | null>(null);
 
+    // Template/Theme Data
+    const templates = [
+        { id: 'indigo', name: 'Pro Indigo', bg: 'bg-indigo-600', text: 'text-white', border: 'border-indigo-400', label: 'text-indigo-300' },
+        { id: 'emerald', name: 'Emerald Growth', bg: 'bg-emerald-600', text: 'text-white', border: 'border-emerald-400', label: 'text-emerald-300' },
+        { id: 'slate', name: 'Dark Executive', bg: 'bg-slate-800', text: 'text-white', border: 'border-slate-600', label: 'text-slate-400' },
+        { id: 'minimal', name: 'Clean White', bg: 'bg-white', text: 'text-gray-900', border: 'border-gray-200', label: 'text-gray-500' },
+        { id: 'gradient', name: 'Sunset Gradient', bg: 'bg-gradient-to-br from-orange-400 to-pink-600', text: 'text-white', border: 'border-white/20', label: 'text-orange-100' },
+    ];
+    const [activeTheme, setActiveTheme] = useState(templates[0]);
+
     // Navigation
     const nextStep = () => setCurrentStep((prev) => (prev < 5 ? (prev + 1) as Step : prev));
     const prevStep = () => setCurrentStep((prev) => (prev > 1 ? (prev - 1) as Step : prev));
@@ -163,7 +173,8 @@ export default function CreateContentPage() {
                     hook: result.hook,
                     caption: result.caption,
                     slides: result.slides,
-                    author_name: session?.user?.email?.split('@')[0] || 'LinkedIn Creator'
+                    author_name: session?.user?.email?.split('@')[0] || 'LinkedIn Creator',
+                    theme: activeTheme.id
                 })
             });
 
@@ -515,22 +526,36 @@ export default function CreateContentPage() {
                                     </div>
                                 </div>
 
-                                {/* Right: Carousel Preview */}
+                                {/* Right: Carousel Preview & Template Picker */}
                                 <div className="space-y-4">
-                                    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Carousel Preview (6 Slides)</h3>
-                                    <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+                                    <div className="flex justify-between items-center mb-4">
+                                        <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Select Visual Template</h3>
+                                    </div>
+                                    <div className="flex gap-2 mb-6 flex-wrap">
+                                        {templates.map(t => (
+                                            <button 
+                                                key={t.id}
+                                                onClick={() => setActiveTheme(t)}
+                                                className={`w-8 h-8 rounded-full border-2 transition-transform hover:scale-110 ${t.bg} ${activeTheme.id === t.id ? 'ring-2 ring-offset-2 ring-indigo-500 scale-110' : 'border-transparent'}`}
+                                                title={t.name}
+                                            />
+                                        ))}
+                                    </div>
+
+                                    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-6">Carousel Preview (6 Slides)</h3>
+                                    <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
                                         {result.slides.map((s: string, i: number) => (
                                             <motion.div 
                                                 key={i}
                                                 initial={{ opacity: 0, x: 10 }}
                                                 animate={{ opacity: 1, x: 0 }}
                                                 transition={{ delay: i * 0.1 }}
-                                                className="bg-indigo-600 p-6 rounded-xl shadow-lg border-l-4 border-indigo-400 min-h-[140px] flex flex-col justify-between"
+                                                className={`p-6 rounded-xl shadow-lg border-l-4 min-h-[140px] flex flex-col justify-between ${activeTheme.bg} ${activeTheme.border}`}
                                             >
-                                                <p className="text-white font-bold leading-tight">{s}</p>
+                                                <p className={`${activeTheme.text} font-bold leading-tight`}>{s}</p>
                                                 <div className="flex justify-between items-center mt-4">
-                                                    <span className="text-[10px] uppercase tracking-widest text-indigo-300 font-bold">Slide {i+1}</span>
-                                                    <ChevronRight className="h-4 w-4 text-indigo-300" />
+                                                    <span className={`text-[10px] uppercase tracking-widest font-bold ${activeTheme.label}`}>Slide {i+1}</span>
+                                                    <ChevronRight className={`h-4 w-4 ${activeTheme.label}`} />
                                                 </div>
                                             </motion.div>
                                         ))}
