@@ -381,7 +381,7 @@ async def get_current_user(request: Request, user_id: str):
             expires_at = datetime.fromisoformat(
                 linkedin_token.data[0]["expires_at"].replace("Z", "+00:00")
             )
-            linkedin_connected = expires_at > datetime.utcnow()
+            linkedin_connected = expires_at.replace(tzinfo=None) > datetime.utcnow()
         
         return UserProfile(
             id=user["id"],

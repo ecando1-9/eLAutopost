@@ -129,14 +129,20 @@ class LinkedInService:
                 seconds=token_data.get("expires_in", 5184000)  # Default 60 days
             )
             
-            # Upsert token
-            supabase_client.admin.table("linkedin_tokens").upsert({
+            data_payload = {
                 "user_id": user_id,
                 "access_token": token_data["access_token"],
                 "refresh_token": token_data.get("refresh_token"),
                 "expires_at": expires_at.isoformat(),
                 "scope": " ".join(self.SCOPES)
-            }).execute()
+            }
+            
+            # Check if exists to avoid unique constraint error on user_id
+            existing = supabase_client.admin.table("linkedin_tokens").select("id").eq("user_id", user_id).execute()
+            if existing.data:
+                supabase_client.admin.table("linkedin_tokens").update(data_payload).eq("user_id", user_id).execute()
+            else:
+                supabase_client.admin.table("linkedin_tokens").insert(data_payload).execute()
             
             logger.info(f"Stored LinkedIn token for user {user_id}")
             
