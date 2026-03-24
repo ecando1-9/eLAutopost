@@ -34,6 +34,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         { href: '/admin/audit-logs', label: 'Audit Logs', icon: ShieldAlert },
     ];
 
+    // Keep login page outside admin shell and guard to avoid redirect loops.
+    if (pathname.startsWith('/admin/login')) {
+        return <>{children}</>;
+    }
+
     return (
         <AdminGuard>
             <div className="min-h-screen bg-gray-50 flex">

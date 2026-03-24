@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Loader2, AlertCircle, Shield } from 'lucide-react';
+import { adminService } from '@/services/admin';
 
 export default function AdminLoginPage() {
     const router = useRouter();
@@ -26,25 +27,12 @@ export default function AdminLoginPage() {
 
             if (error) throw error;
 
-            // Verify admin role
-            const { data: { user } } = await supabase.auth.getUser();
-
-            if (user) {
-                const { data: roleData } = await supabase
-                    .from('roles')
-                    .select('role')
-                    .eq('user_id', user.id)
-                    .single();
-
-                if (roleData?.role !== 'admin') {
-                    await supabase.auth.signOut();
-                    throw new Error('Access denied. Admin privileges required.');
-                }
-
-                router.push('/admin/dashboard');
-                router.refresh();
-            }
+            // Verify admin role via backend (source of truth).
+            await adminService.getCurrentAdmin();
+            router.push('/admin/dashboard');
+            router.refresh();
         } catch (err: any) {
+            await supabase.auth.signOut();
             setError(err.message);
         } finally {
             setLoading(false);
