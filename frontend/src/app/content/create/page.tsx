@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -80,7 +80,23 @@ const styles = [
 
 const tones = ['Professional', 'Casual', 'Bold', 'Witty', 'Academic'];
 
+function CreateContentPageFallback() {
+    return (
+        <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
+        </div>
+    );
+}
+
 export default function CreateContentPage() {
+    return (
+        <Suspense fallback={<CreateContentPageFallback />}>
+            <CreateContentPageContent />
+        </Suspense>
+    );
+}
+
+function CreateContentPageContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const supabase = createClientComponentClient();
