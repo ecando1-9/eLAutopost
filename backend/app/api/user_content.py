@@ -19,6 +19,7 @@ from typing import Optional, List
 from pydantic import BaseModel, Field
 
 from ..core.config import logger
+from ..core.datetime_utils import is_future_datetime
 from ..services.content_queue import queue_service
 from ..services.scheduler import scheduler_service
 from ..middleware.admin_auth import get_current_user_id
@@ -218,16 +219,16 @@ async def get_user_dashboard(
         # Get subscription info
         sub_result = supabase_client.admin.table("subscriptions").select(
             "*"
-        ).eq("user_id", user_id).single().execute()
+        ).eq("user_id", user_id).limit(1).execute()
         
-        subscription = sub_result.data if sub_result.data else {}
+        subscription = sub_result.data[0] if sub_result.data else {}
         
         # Get usage metrics
         usage_result = supabase_client.admin.table("usage_metrics").select(
             "*"
-        ).eq("user_id", user_id).single().execute()
+        ).eq("user_id", user_id).limit(1).execute()
         
-        usage = usage_result.data if usage_result.data else {}
+        usage = usage_result.data[0] if usage_result.data else {}
         
         # Get schedule
         schedule = await scheduler_service.get_user_schedule(user_id)
@@ -255,11 +256,9 @@ async def get_user_dashboard(
         
         linkedin_connected = False
         if linkedin_token.data:
-            from datetime import datetime
-            expires_at = datetime.fromisoformat(
-                linkedin_token.data[0]["expires_at"].replace("Z", "+00:00")
+            linkedin_connected = is_future_datetime(
+                linkedin_token.data[0].get("expires_at")
             )
-            linkedin_connected = expires_at.replace(tzinfo=None) > datetime.utcnow()
         
         return {
             "success": True,

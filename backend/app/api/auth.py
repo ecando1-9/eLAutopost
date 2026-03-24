@@ -20,7 +20,6 @@ from fastapi import APIRouter, HTTPException, status, Request, Depends
 from fastapi.responses import RedirectResponse
 from typing import Optional
 import secrets
-from datetime import datetime
 
 from ..models.schemas import (
     UserSignup,
@@ -37,6 +36,7 @@ from ..core.security import (
     get_client_ip
 )
 from ..core.config import settings, logger
+from ..core.datetime_utils import utc_now, is_future_datetime
 from ..services.database import (
     supabase_client,
     create_user_record,
@@ -181,7 +181,7 @@ async def login(request: Request, credentials: UserLogin):
         
         # Update last login time
         supabase_client.admin.table("users").update({
-            "last_login_at": datetime.utcnow().isoformat()
+            "last_login_at": utc_now().isoformat()
         }).eq("id", user_id).execute()
         
         # Create access token
@@ -378,10 +378,9 @@ async def get_current_user(request: Request, user_id: str):
         
         linkedin_connected = False
         if linkedin_token.data:
-            expires_at = datetime.fromisoformat(
-                linkedin_token.data[0]["expires_at"].replace("Z", "+00:00")
+            linkedin_connected = is_future_datetime(
+                linkedin_token.data[0].get("expires_at")
             )
-            linkedin_connected = expires_at.replace(tzinfo=None) > datetime.utcnow()
         
         return UserProfile(
             id=user["id"],

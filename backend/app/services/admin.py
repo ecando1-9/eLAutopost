@@ -15,8 +15,9 @@ Security:
 """
 
 from typing import Dict, Any, List, Optional
-from datetime import datetime, timedelta
+from datetime import timedelta
 from ..core.config import logger
+from ..core.datetime_utils import utc_now, parse_datetime_utc
 from ..services.database import supabase_client
 
 
@@ -238,9 +239,8 @@ class AdminService:
             
             # Determine new status
             sub = sub_result.data
-            if sub["trial_end"] and datetime.fromisoformat(
-                sub["trial_end"].replace("Z", "+00:00")
-            ) > datetime.utcnow():
+            trial_end = parse_datetime_utc(sub.get("trial_end"))
+            if trial_end and trial_end > utc_now():
                 new_status = "trial"
             elif sub["subscription_start"]:
                 new_status = "active"
@@ -333,11 +333,11 @@ class AdminService:
             sub = sub_result.data
             
             # Calculate new trial end date
-            current_trial_end = datetime.fromisoformat(
-                sub["trial_end"].replace("Z", "+00:00")
-            ) if sub["trial_end"] else datetime.utcnow()
+            current_trial_end = parse_datetime_utc(
+                sub.get("trial_end")
+            ) or utc_now()
             
-            new_trial_end = max(current_trial_end, datetime.utcnow()) + timedelta(days=days)
+            new_trial_end = max(current_trial_end, utc_now()) + timedelta(days=days)
             
             # Update subscription
             result = supabase_client.admin.table("subscriptions").update({
@@ -386,8 +386,8 @@ class AdminService:
             # Update subscription to active
             result = supabase_client.admin.table("subscriptions").update({
                 "status": "active",
-                "subscription_start": datetime.utcnow().isoformat(),
-                "renewal_date": (datetime.utcnow() + timedelta(days=30)).isoformat()
+                "subscription_start": utc_now().isoformat(),
+                "renewal_date": (utc_now() + timedelta(days=30)).isoformat()
             }).eq("user_id", user_id).execute()
             
             # Log action

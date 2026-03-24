@@ -17,8 +17,9 @@ Security:
 from typing import Dict, Any, Optional
 import httpx
 import os
-from datetime import datetime, timedelta
+from datetime import timedelta
 from ..core.config import settings, logger
+from ..core.datetime_utils import utc_now, parse_datetime_utc
 from ..services.database import supabase_client
 
 
@@ -125,7 +126,7 @@ class LinkedInService:
             token_data: Token data from OAuth
         """
         try:
-            expires_at = datetime.utcnow() + timedelta(
+            expires_at = utc_now() + timedelta(
                 seconds=token_data.get("expires_in", 5184000)  # Default 60 days
             )
             
@@ -137,12 +138,11 @@ class LinkedInService:
                 "scope": " ".join(self.SCOPES)
             }
             
-            # Check if exists to avoid unique constraint error on user_id
-            existing = supabase_client.admin.table("linkedin_tokens").select("id").eq("user_id", user_id).execute()
-            if existing.data:
-                supabase_client.admin.table("linkedin_tokens").update(data_payload).eq("user_id", user_id).execute()
-            else:
-                supabase_client.admin.table("linkedin_tokens").insert(data_payload).execute()
+            # Use upsert on unique user_id to avoid insert/update race conditions.
+            supabase_client.admin.table("linkedin_tokens").upsert(
+                data_payload,
+                on_conflict="user_id"
+            ).execute()
             
             logger.info(f"Stored LinkedIn token for user {user_id}")
             
@@ -165,16 +165,19 @@ class LinkedInService:
         try:
             result = supabase_client.admin.table("linkedin_tokens").select(
                 "*"
-            ).eq("user_id", user_id).single().execute()
+            ).eq("user_id", user_id).limit(1).execute()
             
             if not result.data:
                 return None
             
-            token_data = result.data
-            expires_at = datetime.fromisoformat(token_data["expires_at"].replace("Z", "+00:00"))
+            token_data = result.data[0]
+            expires_at = parse_datetime_utc(token_data.get("expires_at"))
+            if not expires_at:
+                logger.warning(f"LinkedIn token has invalid expiry for user {user_id}")
+                return None
             
             # Check if token is expired
-            if expires_at <= datetime.utcnow():
+            if expires_at <= utc_now():
                 # Token expired - would need refresh logic here
                 # LinkedIn tokens are long-lived (60 days) so refresh is rare
                 logger.warning(f"LinkedIn token expired for user {user_id}")

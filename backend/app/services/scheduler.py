@@ -122,9 +122,12 @@ class SchedulerService:
         try:
             result = supabase_client.admin.table("posting_schedules").select(
                 "*"
-            ).eq("user_id", user_id).single().execute()
+            ).eq("user_id", user_id).limit(1).execute()
             
-            return result.data if result.data else None
+            if not result.data:
+                return None
+
+            return result.data[0]
             
         except Exception as e:
             logger.error(f"Failed to get user schedule: {e}")
@@ -174,7 +177,8 @@ class SchedulerService:
             
             # Upsert schedule
             result = supabase_client.admin.table("posting_schedules").upsert(
-                schedule_data
+                schedule_data,
+                on_conflict="user_id"
             ).execute()
             
             logger.info(f"Updated schedule for user {user_id}")
