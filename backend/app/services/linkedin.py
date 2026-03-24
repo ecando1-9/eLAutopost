@@ -14,7 +14,7 @@ Security:
 - Rate limiting compliance
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import httpx
 import os
 from datetime import timedelta
@@ -227,6 +227,166 @@ class LinkedInService:
 
         except Exception as e:
             logger.error(f"Failed to get user profile: {e}")
+            raise
+
+    async def get_managed_organizations(
+        self,
+        access_token: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Best-effort fetch of LinkedIn organizations/pages managed by user.
+
+        Returns empty list when scope is insufficient or endpoint not available.
+        """
+        params = {
+            "q": "roleAssignee",
+            "role": "ADMINISTRATOR",
+            "state": "APPROVED",
+            "projection": "(elements*(organizationalTarget,organizationalTarget~(id,localizedName,vanityName)))"
+        }
+
+        organizations: List[Dict[str, Any]] = []
+        seen_ids: set[str] = set()
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{self.API_BASE}/organizationalEntityAcls",
+                    params=params,
+                    headers={
+                        "Authorization": f"Bearer {access_token}",
+                        "X-Restli-Protocol-Version": "2.0.0"
+                    }
+                )
+
+                if response.status_code in (401, 403):
+                    logger.info(
+                        "LinkedIn organization listing unavailable (missing scope/permissions)"
+                    )
+                    return []
+
+                response.raise_for_status()
+                payload = self._safe_json(response)
+                elements = payload.get("elements") if isinstance(payload, dict) else []
+
+                if not isinstance(elements, list):
+                    return []
+
+                for item in elements:
+                    if not isinstance(item, dict):
+                        continue
+
+                    target_urn = str(item.get("organizationalTarget") or "").strip()
+                    target_data = item.get("organizationalTarget~")
+                    target_data = target_data if isinstance(target_data, dict) else {}
+
+                    org_id = str(target_data.get("id") or "").strip()
+                    if not org_id and target_urn.startswith("urn:li:organization:"):
+                        org_id = target_urn.split(":")[-1]
+                    if not org_id:
+                        continue
+
+                    if org_id in seen_ids:
+                        continue
+                    seen_ids.add(org_id)
+
+                    organizations.append(
+                        {
+                            "id": org_id,
+                            "name": (
+                                target_data.get("localizedName")
+                                or target_data.get("vanityName")
+                                or f"Organization {org_id}"
+                            ),
+                            "vanity_name": target_data.get("vanityName"),
+                            "urn": target_urn or f"urn:li:organization:{org_id}",
+                        }
+                    )
+
+        except Exception as e:
+            logger.warning(f"Failed to list managed organizations: {e}")
+            return []
+
+        return organizations
+
+    async def get_linkedin_targets(self, user_id: str) -> Dict[str, Any]:
+        """
+        Return LinkedIn connection status, profile and managed pages.
+        """
+        try:
+            token_result = supabase_client.admin.table("linkedin_tokens").select(
+                "access_token, expires_at, scope"
+            ).eq("user_id", user_id).limit(1).execute()
+
+            if not token_result.data:
+                return {
+                    "connected": False,
+                    "profile": None,
+                    "organizations": [],
+                    "scopes": []
+                }
+
+            token_data = token_result.data[0]
+            expires_at = parse_datetime_utc(token_data.get("expires_at"))
+            if not expires_at or expires_at <= utc_now():
+                return {
+                    "connected": False,
+                    "profile": None,
+                    "organizations": [],
+                    "scopes": (token_data.get("scope") or "").split()
+                }
+
+            access_token = token_data.get("access_token")
+            if not access_token:
+                return {
+                    "connected": False,
+                    "profile": None,
+                    "organizations": [],
+                    "scopes": (token_data.get("scope") or "").split()
+                }
+
+            raw_profile = await self.get_user_profile(access_token)
+
+            profile_id = (
+                raw_profile.get("sub")
+                or raw_profile.get("id")
+                or ""
+            )
+            profile_name = (
+                raw_profile.get("name")
+                or (
+                    f"{raw_profile.get('localizedFirstName', '')} "
+                    f"{raw_profile.get('localizedLastName', '')}"
+                ).strip()
+                or "LinkedIn User"
+            )
+            profile_email = (
+                raw_profile.get("email")
+                or raw_profile.get("emailAddress")
+            )
+
+            profile_picture = (
+                raw_profile.get("picture")
+                or raw_profile.get("profilePicture")
+            )
+
+            organizations = await self.get_managed_organizations(access_token)
+
+            return {
+                "connected": True,
+                "profile": {
+                    "id": str(profile_id),
+                    "name": str(profile_name),
+                    "email": str(profile_email) if profile_email else None,
+                    "picture_url": str(profile_picture) if profile_picture else None,
+                    "urn": f"urn:li:person:{profile_id}" if profile_id else None,
+                },
+                "organizations": organizations,
+                "scopes": (token_data.get("scope") or "").split()
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to get LinkedIn targets for user {user_id}: {e}")
             raise
 
     @staticmethod

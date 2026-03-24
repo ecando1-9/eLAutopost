@@ -39,7 +39,7 @@ class GenerateQueueRequest(BaseModel):
 
 
 class ScheduleConfigRequest(BaseModel):
-    days_of_week: List[str] = Field(..., min_items=1, max_items=7)
+    days_of_week: List[str] = Field(default_factory=list, max_items=7)
     time_of_day: str = Field(..., pattern=r"^\d{2}:\d{2}$")
     timezone: str = Field(default="Asia/Kolkata")
     is_active: bool = True

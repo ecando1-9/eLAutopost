@@ -5,11 +5,12 @@ import Link from 'next/link';
 import { adminService, User } from '@/services/admin';
 import {
     CreditCard,
-    Calendar,
     AlertTriangle,
     CheckCircle,
+    PauseCircle,
+    PlayCircle,
+    ShieldX,
     Loader2,
-    ListFilter
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -17,6 +18,7 @@ export default function SubscriptionsPage() {
     const [users, setUsers] = useState<User[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState('active'); // Default to active
+    const [actionUserId, setActionUserId] = useState<string | null>(null);
 
     const fetchSubscriptions = async () => {
         setIsLoading(true);
@@ -35,6 +37,32 @@ export default function SubscriptionsPage() {
     useEffect(() => {
         fetchSubscriptions();
     }, [statusFilter]);
+
+    const runAction = async (
+        userId: string,
+        action: 'hold' | 'resume' | 'activate' | 'suspend' | 'unsuspend'
+    ) => {
+        setActionUserId(userId);
+        try {
+            if (action === 'hold') {
+                await adminService.holdSubscription(userId, 'Admin hold');
+            } else if (action === 'resume') {
+                await adminService.resumeSubscription(userId);
+            } else if (action === 'activate') {
+                await adminService.activateSubscription(userId);
+            } else if (action === 'suspend') {
+                await adminService.suspendUser(userId, 'Admin suspension');
+            } else if (action === 'unsuspend') {
+                await adminService.resumeUser(userId);
+            }
+            await fetchSubscriptions();
+        } catch (error) {
+            console.error(`Failed to ${action} subscription/user:`, error);
+            alert(`Failed to ${action}. Please try again.`);
+        } finally {
+            setActionUserId(null);
+        }
+    };
 
     const getStatusColor = (status: string) => {
         switch (status) {
@@ -65,7 +93,7 @@ export default function SubscriptionsPage() {
 
                 {/* Filter Tabs */}
                 <div className="bg-white p-1 rounded-lg border border-gray-200 flex overflow-x-auto max-w-full">
-                    {['all', 'active', 'trial', 'expired', 'cancelled'].map((status) => (
+                    {['all', 'active', 'trial', 'expired', 'cancelled', 'blocked'].map((status) => (
                         <button
                             key={status}
                             onClick={() => setStatusFilter(status)}
@@ -93,7 +121,7 @@ export default function SubscriptionsPage() {
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Start Date</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Renewal/End</th>
-                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Controls</th>
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
@@ -156,12 +184,69 @@ export default function SubscriptionsPage() {
                                             )}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                            <Link
-                                                href={`/admin/users/${user.id}`}
-                                                className="text-blue-600 hover:text-blue-900"
-                                            >
-                                                Manage
-                                            </Link>
+                                            <div className="inline-flex items-center gap-2">
+                                                {(user.subscription_status === 'active' || user.subscription_status === 'trial') && (
+                                                    <button
+                                                        type="button"
+                                                        disabled={actionUserId === user.id}
+                                                        onClick={() => runAction(user.id, 'hold')}
+                                                        className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-60"
+                                                    >
+                                                        {actionUserId === user.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PauseCircle className="h-3.5 w-3.5" />}
+                                                        Hold
+                                                    </button>
+                                                )}
+                                                {(user.subscription_status === 'cancelled' || user.subscription_status === 'expired') && (
+                                                    <>
+                                                        <button
+                                                            type="button"
+                                                            disabled={actionUserId === user.id}
+                                                            onClick={() => runAction(user.id, 'resume')}
+                                                            className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-60"
+                                                        >
+                                                            {actionUserId === user.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PlayCircle className="h-3.5 w-3.5" />}
+                                                            Resume
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            disabled={actionUserId === user.id}
+                                                            onClick={() => runAction(user.id, 'activate')}
+                                                            className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
+                                                        >
+                                                            {actionUserId === user.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle className="h-3.5 w-3.5" />}
+                                                            Activate
+                                                        </button>
+                                                    </>
+                                                )}
+                                                {user.subscription_status === 'blocked' ? (
+                                                    <button
+                                                        type="button"
+                                                        disabled={actionUserId === user.id}
+                                                        onClick={() => runAction(user.id, 'unsuspend')}
+                                                        className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
+                                                    >
+                                                        {actionUserId === user.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PlayCircle className="h-3.5 w-3.5" />}
+                                                        Unsuspend
+                                                    </button>
+                                                ) : (
+                                                    <button
+                                                        type="button"
+                                                        disabled={actionUserId === user.id}
+                                                        onClick={() => runAction(user.id, 'suspend')}
+                                                        className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-60"
+                                                    >
+                                                        {actionUserId === user.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldX className="h-3.5 w-3.5" />}
+                                                        Suspend
+                                                    </button>
+                                                )}
+
+                                                <Link
+                                                    href={`/admin/users/${user.id}`}
+                                                    className="text-blue-600 hover:text-blue-900"
+                                                >
+                                                    Manage
+                                                </Link>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))

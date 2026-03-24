@@ -490,7 +490,7 @@ SET search_path = public
 AS $$
 BEGIN
     INSERT INTO public.subscriptions (user_id, plan_name, price, status, trial_start, trial_end)
-    VALUES (NEW.id, 'monthly', 299.00, 'trial', NOW(), NOW() + INTERVAL '7 days');
+    VALUES (NEW.id, 'monthly', 299.00, 'trial', NOW(), NOW() + INTERVAL '30 days');
     
     INSERT INTO public.roles (user_id, role) VALUES (NEW.id, 'user');
     INSERT INTO public.usage_metrics (user_id) VALUES (NEW.id);

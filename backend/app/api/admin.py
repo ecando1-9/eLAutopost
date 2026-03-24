@@ -21,10 +21,14 @@ from ..models.admin_schemas import (
     AdminUserResponse,
     BlockUserRequest,
     UnblockUserRequest,
+    SuspendUserRequest,
+    ResumeUserRequest,
     SubscriptionResponse,
     ExtendTrialRequest,
     ActivateSubscriptionRequest,
     CancelSubscriptionRequest,
+    HoldSubscriptionRequest,
+    ResumeSubscriptionRequest,
     UsageMetricsResponse,
     ResetUsageRequest,
     DashboardStatsResponse,
@@ -323,6 +327,73 @@ async def unblock_user(
         )
 
 
+@router.post("/users/suspend")
+@limiter.limit("10/minute")
+async def suspend_user(
+    request: Request,
+    suspend_request: SuspendUserRequest,
+    admin_data: tuple = Depends(get_admin_with_ip)
+):
+    """
+    Suspend a user's access.
+    """
+    admin_id, ip_address = admin_data
+
+    try:
+        result = await admin_service.suspend_user(
+            admin_id=admin_id,
+            user_id=suspend_request.user_id,
+            reason=suspend_request.reason,
+            ip_address=ip_address
+        )
+
+        return {
+            "success": True,
+            "message": f"User {suspend_request.user_id} has been suspended",
+            "subscription": result
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to suspend user: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to suspend user"
+        )
+
+
+@router.post("/users/resume")
+@limiter.limit("10/minute")
+async def resume_user(
+    request: Request,
+    resume_request: ResumeUserRequest,
+    admin_data: tuple = Depends(get_admin_with_ip)
+):
+    """
+    Resume a suspended user.
+    """
+    admin_id, ip_address = admin_data
+
+    try:
+        result = await admin_service.resume_user(
+            admin_id=admin_id,
+            user_id=resume_request.user_id,
+            ip_address=ip_address
+        )
+
+        return {
+            "success": True,
+            "message": f"User {resume_request.user_id} has been resumed",
+            "subscription": result
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to resume user: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to resume user"
+        )
+
+
 # =============================================================================
 # SUBSCRIPTION MANAGEMENT
 # =============================================================================
@@ -470,6 +541,73 @@ async def cancel_subscription(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to cancel subscription"
+        )
+
+
+@router.post("/subscriptions/hold")
+@limiter.limit("10/minute")
+async def hold_subscription(
+    request: Request,
+    hold_request: HoldSubscriptionRequest,
+    admin_data: tuple = Depends(get_admin_with_ip)
+):
+    """
+    Put subscription on hold.
+    """
+    admin_id, ip_address = admin_data
+
+    try:
+        result = await admin_service.hold_subscription(
+            admin_id=admin_id,
+            user_id=hold_request.user_id,
+            reason=hold_request.reason,
+            ip_address=ip_address
+        )
+
+        return {
+            "success": True,
+            "message": "Subscription put on hold successfully",
+            "subscription": result
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to hold subscription: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to hold subscription"
+        )
+
+
+@router.post("/subscriptions/resume")
+@limiter.limit("10/minute")
+async def resume_subscription(
+    request: Request,
+    resume_request: ResumeSubscriptionRequest,
+    admin_data: tuple = Depends(get_admin_with_ip)
+):
+    """
+    Resume held/cancelled subscription.
+    """
+    admin_id, ip_address = admin_data
+
+    try:
+        result = await admin_service.resume_subscription(
+            admin_id=admin_id,
+            user_id=resume_request.user_id,
+            ip_address=ip_address
+        )
+
+        return {
+            "success": True,
+            "message": "Subscription resumed successfully",
+            "subscription": result
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to resume subscription: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to resume subscription"
         )
 
 

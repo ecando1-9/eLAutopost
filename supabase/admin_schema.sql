@@ -323,7 +323,7 @@ BEGIN
         299.00,
         'trial',
         NOW(),
-        NOW() + INTERVAL '7 days'
+        NOW() + INTERVAL '30 days'
     );
     
     -- Create default role (user)

@@ -4,17 +4,14 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { adminService, User } from '@/services/admin';
 import {
-    User as UserIcon,
     Mail,
-    Calendar,
     CreditCard,
     Activity,
-    Shield,
-    ShieldOff,
+    ShieldX,
     ArrowLeft,
     Loader2,
-    CheckCircle,
-    XCircle,
+    PauseCircle,
+    PlayCircle,
     Clock
 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -81,18 +78,57 @@ export default function UserDetailsPage() {
         if (!user) return;
         const isBlocked = user.subscription_status === 'blocked';
 
-        if (!confirm(`Are you sure you want to ${isBlocked ? 'unblock' : 'block'} this user?`)) return;
+        if (!confirm(`Are you sure you want to ${isBlocked ? 'resume' : 'suspend'} this user?`)) return;
 
         setIsProcessing(true);
         try {
             if (isBlocked) {
-                await adminService.unblockUser(userId);
+                await adminService.resumeUser(userId);
             } else {
-                await adminService.blockUser(userId, 'Admin action');
+                await adminService.suspendUser(userId, 'Admin action');
             }
             fetchUser();
         } catch (error) {
             alert('Action failed');
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    const handleHoldSubscription = async () => {
+        if (!confirm('Put this subscription on hold?')) return;
+        setIsProcessing(true);
+        try {
+            await adminService.holdSubscription(userId, 'Admin hold');
+            fetchUser();
+        } catch (error) {
+            alert('Failed to hold subscription');
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    const handleResumeSubscription = async () => {
+        if (!confirm('Resume this subscription?')) return;
+        setIsProcessing(true);
+        try {
+            await adminService.resumeSubscription(userId);
+            fetchUser();
+        } catch (error) {
+            alert('Failed to resume subscription');
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    const handleActivateSubscription = async () => {
+        if (!confirm('Activate this subscription now?')) return;
+        setIsProcessing(true);
+        try {
+            await adminService.activateSubscription(userId);
+            fetchUser();
+        } catch (error) {
+            alert('Failed to activate subscription');
         } finally {
             setIsProcessing(false);
         }
@@ -149,11 +185,11 @@ export default function UserDetailsPage() {
                         >
                             {user.subscription_status === 'blocked' ? (
                                 <>
-                                    <ShieldOff className="h-4 w-4 mr-2" /> Unblock User
+                                    <PlayCircle className="h-4 w-4 mr-2" /> Resume User
                                 </>
                             ) : (
                                 <>
-                                    <Shield className="h-4 w-4 mr-2" /> Block User
+                                    <ShieldX className="h-4 w-4 mr-2" /> Suspend User
                                 </>
                             )}
                         </button>
@@ -186,35 +222,77 @@ export default function UserDetailsPage() {
                                 </div>
                             </div>
 
-                            {user.subscription_status === 'trial' && (
-                                <div className="p-4 bg-gray-50 rounded-lg">
-                                    <p className="text-sm text-gray-500 mb-1">Trial Ends</p>
-                                    <p className="font-semibold text-gray-900">
-                                        {user.trial_end ? format(new Date(user.trial_end), 'PPP') : 'N/A'}
-                                    </p>
-                                    <button
-                                        onClick={handleExtendTrial}
-                                        disabled={isProcessing}
-                                        className="mt-2 text-sm text-blue-600 hover:text-blue-800 font-medium disabled:opacity-50"
-                                    >
-                                        + Extend Trial
-                                    </button>
-                                </div>
-                            )}
-
                             {user.subscription_status === 'active' && (
                                 <div className="p-4 bg-gray-50 rounded-lg">
                                     <p className="text-sm text-gray-500 mb-1">Next Renewal</p>
                                     <p className="font-semibold text-gray-900">
                                         {user.renewal_date ? format(new Date(user.renewal_date), 'PPP') : 'N/A'}
                                     </p>
-                                    <button
-                                        onClick={handleCancelSubscription}
-                                        disabled={isProcessing}
-                                        className="mt-2 text-sm text-red-600 hover:text-red-800 font-medium disabled:opacity-50"
-                                    >
-                                        Cancel Subscription
-                                    </button>
+                                    <div className="mt-2 flex gap-3">
+                                        <button
+                                            onClick={handleHoldSubscription}
+                                            disabled={isProcessing}
+                                            className="inline-flex items-center text-sm text-amber-700 hover:text-amber-800 font-medium disabled:opacity-50"
+                                        >
+                                            <PauseCircle className="h-4 w-4 mr-1" />
+                                            Hold
+                                        </button>
+                                        <button
+                                            onClick={handleCancelSubscription}
+                                            disabled={isProcessing}
+                                            className="text-sm text-red-600 hover:text-red-800 font-medium disabled:opacity-50"
+                                        >
+                                            Cancel
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {(user.subscription_status === 'trial') && (
+                                <div className="p-4 bg-gray-50 rounded-lg">
+                                    <p className="text-sm text-gray-500 mb-1">
+                                        Trial ends {user.trial_end ? format(new Date(user.trial_end), 'PPP') : 'N/A'}
+                                    </p>
+                                    <div className="flex gap-3">
+                                        <button
+                                            onClick={handleExtendTrial}
+                                            disabled={isProcessing}
+                                            className="text-sm text-blue-600 hover:text-blue-800 font-medium disabled:opacity-50"
+                                        >
+                                            + Extend Trial
+                                        </button>
+                                        <button
+                                            onClick={handleHoldSubscription}
+                                            disabled={isProcessing}
+                                            className="inline-flex items-center text-sm text-amber-700 hover:text-amber-800 font-medium disabled:opacity-50"
+                                        >
+                                            <PauseCircle className="h-4 w-4 mr-1" />
+                                            Hold
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {(user.subscription_status === 'cancelled' || user.subscription_status === 'expired') && (
+                                <div className="p-4 bg-gray-50 rounded-lg">
+                                    <p className="text-sm text-gray-500 mb-1">Resume Access</p>
+                                    <div className="flex gap-3">
+                                        <button
+                                            onClick={handleResumeSubscription}
+                                            disabled={isProcessing}
+                                            className="inline-flex items-center text-sm text-blue-700 hover:text-blue-800 font-medium disabled:opacity-50"
+                                        >
+                                            <PlayCircle className="h-4 w-4 mr-1" />
+                                            Resume
+                                        </button>
+                                        <button
+                                            onClick={handleActivateSubscription}
+                                            disabled={isProcessing}
+                                            className="text-sm text-emerald-700 hover:text-emerald-800 font-medium disabled:opacity-50"
+                                        >
+                                            Activate Paid
+                                        </button>
+                                    </div>
                                 </div>
                             )}
                         </div>

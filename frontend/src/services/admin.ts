@@ -37,6 +37,8 @@ export interface User {
     last_activity?: string;
 }
 
+export type SubscriptionControlStatus = 'trial' | 'active' | 'expired' | 'cancelled' | 'blocked';
+
 export const adminService = {
     // Auth & Profile
     getCurrentAdmin: async () => {
@@ -86,6 +88,16 @@ export const adminService = {
         return data;
     },
 
+    suspendUser: async (id: string, reason?: string) => {
+        const { data } = await api.post('/admin/users/suspend', { user_id: id, reason });
+        return data;
+    },
+
+    resumeUser: async (id: string) => {
+        const { data } = await api.post('/admin/users/resume', { user_id: id });
+        return data;
+    },
+
     // Subscriptions
     getSubscriptions: async (params?: { status?: string; page?: number; page_size?: number }) => {
         // UI expects user+subscription combined rows, so use users search view.
@@ -108,6 +120,21 @@ export const adminService = {
 
     cancelSubscription: async (userId: string, logic: 'immediate' | 'end_of_period' = 'end_of_period') => {
         const { data } = await api.post('/admin/subscriptions/cancel', {
+            user_id: userId,
+        });
+        return data;
+    },
+
+    holdSubscription: async (userId: string, reason?: string) => {
+        const { data } = await api.post('/admin/subscriptions/hold', {
+            user_id: userId,
+            reason,
+        });
+        return data;
+    },
+
+    resumeSubscription: async (userId: string) => {
+        const { data } = await api.post('/admin/subscriptions/resume', {
             user_id: userId,
         });
         return data;

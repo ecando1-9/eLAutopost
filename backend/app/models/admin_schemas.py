@@ -34,9 +34,13 @@ class AdminAction(str, Enum):
     """Admin action types for audit logging."""
     USER_BLOCKED = "user_blocked"
     USER_UNBLOCKED = "user_unblocked"
+    USER_SUSPENDED = "user_suspended"
+    USER_RESUMED = "user_resumed"
     TRIAL_EXTENDED = "trial_extended"
     SUBSCRIPTION_ACTIVATED = "subscription_activated"
     SUBSCRIPTION_CANCELLED = "subscription_cancelled"
+    SUBSCRIPTION_ON_HOLD = "subscription_on_hold"
+    SUBSCRIPTION_RESUMED = "subscription_resumed"
     USAGE_RESET = "usage_reset"
     ROLE_CHANGED = "role_changed"
 
@@ -85,6 +89,24 @@ class UnblockUserRequest(BaseModel):
     user_id: str = Field(..., description="User ID to unblock")
 
 
+class SuspendUserRequest(BaseModel):
+    """Request to suspend a user."""
+    user_id: str = Field(..., description="User ID to suspend")
+    reason: Optional[str] = Field(None, max_length=500, description="Reason for suspension")
+
+    @validator("reason")
+    def sanitize_suspend_reason(cls, v):
+        """Sanitize suspension reason text."""
+        if v:
+            return sanitize_input(v, max_length=500)
+        return v
+
+
+class ResumeUserRequest(BaseModel):
+    """Request to resume a suspended user."""
+    user_id: str = Field(..., description="User ID to resume")
+
+
 # =============================================================================
 # SUBSCRIPTION MANAGEMENT MODELS
 # =============================================================================
@@ -119,6 +141,24 @@ class ActivateSubscriptionRequest(BaseModel):
 
 class CancelSubscriptionRequest(BaseModel):
     """Request to cancel subscription."""
+    user_id: str = Field(..., description="User ID")
+
+
+class HoldSubscriptionRequest(BaseModel):
+    """Request to place subscription on hold."""
+    user_id: str = Field(..., description="User ID")
+    reason: Optional[str] = Field(None, max_length=500, description="Optional hold reason")
+
+    @validator("reason")
+    def sanitize_hold_reason(cls, v):
+        """Sanitize hold reason text."""
+        if v:
+            return sanitize_input(v, max_length=500)
+        return v
+
+
+class ResumeSubscriptionRequest(BaseModel):
+    """Request to resume a held/cancelled subscription."""
     user_id: str = Field(..., description="User ID")
 
 

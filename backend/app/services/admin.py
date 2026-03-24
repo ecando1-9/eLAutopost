@@ -83,6 +83,18 @@ class AdminService:
             
         except Exception as e:
             logger.error(f"Failed to log admin action: {e}")
+
+    @staticmethod
+    def _resolve_subscription_status(sub: Dict[str, Any]) -> str:
+        """
+        Resolve effective subscription status when restoring a user.
+        """
+        trial_end = parse_datetime_utc(sub.get("trial_end"))
+        if trial_end and trial_end > utc_now():
+            return "trial"
+        if sub.get("subscription_start"):
+            return "active"
+        return "expired"
     
     # =========================================================================
     # USER MANAGEMENT
@@ -239,13 +251,7 @@ class AdminService:
             
             # Determine new status
             sub = sub_result.data
-            trial_end = parse_datetime_utc(sub.get("trial_end"))
-            if trial_end and trial_end > utc_now():
-                new_status = "trial"
-            elif sub["subscription_start"]:
-                new_status = "active"
-            else:
-                new_status = "expired"
+            new_status = self._resolve_subscription_status(sub)
             
             # Update subscription status
             result = supabase_client.admin.table("subscriptions").update({
@@ -268,6 +274,73 @@ class AdminService:
         except Exception as e:
             logger.error(f"Failed to unblock user: {e}")
             raise Exception("Failed to unblock user")
+
+    async def suspend_user(
+        self,
+        admin_id: str,
+        user_id: str,
+        reason: Optional[str] = None,
+        ip_address: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Suspend user access. Internally maps to blocked status.
+        """
+        try:
+            result = supabase_client.admin.table("subscriptions").update({
+                "status": "blocked"
+            }).eq("user_id", user_id).execute()
+
+            await self.log_admin_action(
+                admin_id=admin_id,
+                action="user_suspended",
+                target_user_id=user_id,
+                details={"reason": reason},
+                ip_address=ip_address
+            )
+
+            logger.info(f"User {user_id} suspended by admin {admin_id}")
+            return result.data[0] if result.data else {}
+
+        except Exception as e:
+            logger.error(f"Failed to suspend user: {e}")
+            raise Exception("Failed to suspend user")
+
+    async def resume_user(
+        self,
+        admin_id: str,
+        user_id: str,
+        ip_address: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Resume suspended/blocked user access.
+        """
+        try:
+            sub_result = supabase_client.admin.table("subscriptions").select(
+                "*"
+            ).eq("user_id", user_id).single().execute()
+
+            if not sub_result.data:
+                raise Exception("Subscription not found")
+
+            new_status = self._resolve_subscription_status(sub_result.data)
+            result = supabase_client.admin.table("subscriptions").update({
+                "status": new_status
+            }).eq("user_id", user_id).execute()
+
+            await self.log_admin_action(
+                admin_id=admin_id,
+                action="user_resumed",
+                target_user_id=user_id,
+                details={"new_status": new_status},
+                ip_address=ip_address
+            )
+
+            logger.info(f"User {user_id} resumed by admin {admin_id}")
+            return result.data[0] if result.data else {}
+
+        except Exception as e:
+            logger.error(f"Failed to resume user: {e}")
+            raise Exception("Failed to resume user")
     
     # =========================================================================
     # SUBSCRIPTION MANAGEMENT
@@ -450,6 +523,93 @@ class AdminService:
         except Exception as e:
             logger.error(f"Failed to cancel subscription: {e}")
             raise Exception("Failed to cancel subscription")
+
+    async def hold_subscription(
+        self,
+        admin_id: str,
+        user_id: str,
+        reason: Optional[str] = None,
+        ip_address: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Place a subscription on hold.
+
+        Internally maps to `cancelled` status until billing integration is added.
+        """
+        try:
+            result = supabase_client.admin.table("subscriptions").update({
+                "status": "cancelled"
+            }).eq("user_id", user_id).execute()
+
+            await self.log_admin_action(
+                admin_id=admin_id,
+                action="subscription_on_hold",
+                target_user_id=user_id,
+                details={"reason": reason},
+                ip_address=ip_address
+            )
+
+            logger.info(
+                f"Subscription put on hold for user {user_id} (admin: {admin_id})"
+            )
+
+            return result.data[0] if result.data else {}
+
+        except Exception as e:
+            logger.error(f"Failed to hold subscription: {e}")
+            raise Exception("Failed to hold subscription")
+
+    async def resume_subscription(
+        self,
+        admin_id: str,
+        user_id: str,
+        ip_address: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Resume held or cancelled subscription.
+        """
+        try:
+            sub_result = supabase_client.admin.table("subscriptions").select(
+                "*"
+            ).eq("user_id", user_id).single().execute()
+
+            if not sub_result.data:
+                raise Exception("Subscription not found")
+
+            sub = sub_result.data
+            new_status = self._resolve_subscription_status(sub)
+            update_data: Dict[str, Any] = {"status": new_status}
+
+            if new_status == "expired":
+                # Resume as active paid subscription when no valid trial exists.
+                new_status = "active"
+                update_data["status"] = "active"
+                if not sub.get("subscription_start"):
+                    update_data["subscription_start"] = utc_now().isoformat()
+                update_data["renewal_date"] = (utc_now() + timedelta(days=30)).isoformat()
+
+            result = supabase_client.admin.table("subscriptions").update(
+                update_data
+            ).eq("user_id", user_id).execute()
+
+            await self.log_admin_action(
+                admin_id=admin_id,
+                action="subscription_resumed",
+                target_user_id=user_id,
+                details={"new_status": update_data["status"]},
+                ip_address=ip_address
+            )
+
+            logger.info(
+                f"Subscription resumed for user {user_id} with status {update_data['status']} "
+                f"(admin: {admin_id})"
+            )
+
+            return result.data[0] if result.data else {}
+
+        except Exception as e:
+            logger.error(f"Failed to resume subscription: {e}")
+            raise Exception("Failed to resume subscription")
     
     # =========================================================================
     # USAGE TRACKING

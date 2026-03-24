@@ -46,6 +46,7 @@ from ..services.database import (
 )
 from ..services.linkedin import linkedin_service
 from ..middleware.rate_limit import limiter, AUTH_RATE_LIMIT
+from ..middleware.admin_auth import get_current_user_id
 
 
 router = APIRouter()
@@ -328,6 +329,31 @@ async def linkedin_callback(request: Request, code: str, state: str):
         logger.error(f"LinkedIn callback failed: {e}")
         return RedirectResponse(
             url=f"{settings.BACKEND_CORS_ORIGINS[0]}/dashboard?linkedin=error"
+        )
+
+
+@router.get("/linkedin/targets")
+@limiter.limit("60/minute")
+async def get_linkedin_targets(
+    request: Request,
+    user_id: str = Depends(get_current_user_id)
+):
+    """
+    Get LinkedIn connection metadata for the authenticated user.
+
+    Returns:
+    - connected status
+    - connected LinkedIn account/profile
+    - managed organization pages (if scope permits)
+    """
+    try:
+        data = await linkedin_service.get_linkedin_targets(user_id)
+        return data
+    except Exception as e:
+        logger.error(f"Failed to get LinkedIn targets for user {user_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve LinkedIn connection details"
         )
 
 

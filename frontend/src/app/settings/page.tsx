@@ -6,6 +6,7 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import {
     AlertCircle,
     ArrowLeft,
+    Building2,
     Bot,
     CalendarDays,
     CheckCircle2,
@@ -13,9 +14,12 @@ import {
     Globe2,
     Linkedin,
     Loader2,
+    Plus,
+    RefreshCw,
     Save,
     ShieldCheck,
     Sparkles,
+    UserCircle2,
     Zap
 } from 'lucide-react';
 
@@ -39,6 +43,28 @@ interface SettingsResponse {
     preferred_content_types?: ContentType[];
 }
 
+interface LinkedInProfile {
+    id: string;
+    name: string;
+    email?: string | null;
+    picture_url?: string | null;
+    urn?: string | null;
+}
+
+interface LinkedInOrganization {
+    id: string;
+    name: string;
+    vanity_name?: string | null;
+    urn?: string | null;
+}
+
+interface LinkedInTargetsResponse {
+    connected: boolean;
+    profile?: LinkedInProfile | null;
+    organizations?: LinkedInOrganization[];
+    scopes?: string[];
+}
+
 interface ScheduleResponse {
     is_active?: boolean;
     days_of_week?: Day[];
@@ -58,7 +84,24 @@ const DAYS: { value: Day; label: string }[] = [
     { value: 'SUN', label: 'Sun' },
 ];
 
-const CATEGORIES = ['AI', 'Cybersecurity', 'Tech Updates', 'Tools', 'Career'];
+const DEFAULT_CATEGORY_POOL = [
+    'AI',
+    'Cybersecurity',
+    'Tech News',
+    'SaaS Growth',
+    'Productivity',
+    'Startups',
+    'Leadership',
+    'Remote Work',
+    'Career',
+    'Dev Tools',
+    'Product Management',
+    'Data & Analytics',
+    'Cloud',
+    'Automation',
+    'Marketing',
+    'Personal Branding',
+];
 const CONTENT_TYPES: ContentType[] = ['insight', 'curiosity', 'alert', 'future'];
 const TONES = ['professional', 'friendly', 'authoritative', 'conversational', 'bold'];
 const GOALS = ['Reach', 'Authority', 'Promotion', 'Education', 'Discussion', 'Research'];
@@ -101,6 +144,10 @@ export default function SettingsPage() {
     const [errorMessage, setErrorMessage] = useState('');
 
     const [isLinkedInConnected, setIsLinkedInConnected] = useState(false);
+    const [isLinkedInLoading, setIsLinkedInLoading] = useState(false);
+    const [linkedinProfile, setLinkedinProfile] = useState<LinkedInProfile | null>(null);
+    const [linkedinOrganizations, setLinkedinOrganizations] = useState<LinkedInOrganization[]>([]);
+    const [linkedinScopes, setLinkedinScopes] = useState<string[]>([]);
 
     // Main settings
     const [defaultTone, setDefaultTone] = useState('professional');
@@ -121,6 +168,9 @@ export default function SettingsPage() {
     const [timeOfDay, setTimeOfDay] = useState('09:00');
     const [timezone, setTimezone] = useState('Asia/Kolkata');
     const [categories, setCategories] = useState<string[]>(['AI']);
+    const [availableCategories, setAvailableCategories] = useState<string[]>(DEFAULT_CATEGORY_POOL);
+    const [showAllCategories, setShowAllCategories] = useState(false);
+    const [customCategory, setCustomCategory] = useState('');
     const [autoTopic, setAutoTopic] = useState(true);
 
     const setupChecks = useMemo(
@@ -148,6 +198,51 @@ export default function SettingsPage() {
     );
 
     const setupScore = setupChecks.filter((check) => check.done).length;
+    const visibleCategories = showAllCategories
+        ? availableCategories
+        : availableCategories.slice(0, 10);
+
+    const normalizeCategory = (value: string) => value.trim().replace(/\s+/g, ' ');
+
+    const mergeCategories = (incoming: string[]) => {
+        const map = new Map<string, string>();
+        [...DEFAULT_CATEGORY_POOL, ...incoming]
+            .map((item) => normalizeCategory(item))
+            .filter(Boolean)
+            .forEach((item) => {
+                const key = item.toLowerCase();
+                if (!map.has(key)) {
+                    map.set(key, item);
+                }
+            });
+        return Array.from(map.values());
+    };
+
+    const loadLinkedInTargets = async () => {
+        setIsLinkedInLoading(true);
+        try {
+            const response = await fetch('/api/v1/auth/linkedin/targets', {
+                cache: 'no-store',
+            });
+            if (!response.ok) {
+                return;
+            }
+
+            const payload: LinkedInTargetsResponse = await response.json();
+            setIsLinkedInConnected(Boolean(payload.connected));
+            setLinkedinProfile(payload.profile || null);
+            setLinkedinOrganizations(Array.isArray(payload.organizations) ? payload.organizations : []);
+            setLinkedinScopes(Array.isArray(payload.scopes) ? payload.scopes : []);
+
+            if (payload.organizations && payload.organizations.length === 1) {
+                setOrganizationId((current) => current || payload.organizations![0].id);
+            }
+        } catch (error) {
+            console.error('Failed to load LinkedIn targets:', error);
+        } finally {
+            setIsLinkedInLoading(false);
+        }
+    };
 
     useEffect(() => {
         const load = async () => {
@@ -194,11 +289,12 @@ export default function SettingsPage() {
                             setTimeOfDay(schedule.time_of_day.slice(0, 5));
                         }
                         setTimezone(schedule.timezone || 'Asia/Kolkata');
-                        setCategories(
+                        const loadedCategories =
                             Array.isArray(schedule.categories) && schedule.categories.length > 0
                                 ? schedule.categories
-                                : ['AI']
-                        );
+                                : ['AI'];
+                        setCategories(loadedCategories);
+                        setAvailableCategories(mergeCategories(loadedCategories));
                         setAutoTopic(schedule.auto_topic ?? true);
                     }
                 }
@@ -217,6 +313,8 @@ export default function SettingsPage() {
                 } catch (error) {
                     console.error('Failed to read local preferences:', error);
                 }
+
+                await loadLinkedInTargets();
             } catch (error) {
                 console.error('Failed to load settings:', error);
                 setErrorMessage('Failed to load settings. Please refresh.');
@@ -240,6 +338,30 @@ export default function SettingsPage() {
                 ? current.filter((item) => item !== category)
                 : [...current, category]
         );
+    };
+
+    const addCustomCategory = () => {
+        const normalized = normalizeCategory(customCategory);
+        if (!normalized) {
+            return;
+        }
+
+        const existing = availableCategories.find(
+            (category) => category.toLowerCase() === normalized.toLowerCase()
+        );
+        const finalCategory = existing || normalized;
+
+        if (!existing) {
+            setAvailableCategories((current) => mergeCategories([...current, normalized]));
+        }
+
+        setCategories((current) => {
+            if (current.some((item) => item.toLowerCase() === finalCategory.toLowerCase())) {
+                return current;
+            }
+            return [...current, finalCategory];
+        });
+        setCustomCategory('');
     };
 
     const toggleContentType = (contentType: ContentType) => {
@@ -272,6 +394,14 @@ export default function SettingsPage() {
                 throw new Error('Organization/Page ID is required for page posting target.');
             }
 
+            const scheduleDays = daysOfWeek.length > 0 ? daysOfWeek : ['MON'];
+            const normalizedSelectedCategories = categories
+                .map((category) => normalizeCategory(category))
+                .filter(Boolean);
+            if (autoTopic && normalizedSelectedCategories.length === 0) {
+                throw new Error('Select at least one category when auto topic mode is enabled.');
+            }
+
             const [settingsRes, scheduleRes] = await Promise.all([
                 fetch('/api/v1/settings', {
                     method: 'PATCH',
@@ -287,11 +417,11 @@ export default function SettingsPage() {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        days_of_week: daysOfWeek,
+                        days_of_week: scheduleDays,
                         time_of_day: timeOfDay,
                         timezone,
                         is_active: isActive,
-                        categories,
+                        categories: normalizedSelectedCategories,
                         auto_topic: autoTopic,
                     }),
                 }),
@@ -314,6 +444,9 @@ export default function SettingsPage() {
                 organizationId: organizationId.trim(),
             };
             localStorage.setItem(PREFERENCES_KEY, JSON.stringify(localPreferences));
+            setCategories(normalizedSelectedCategories);
+            setAvailableCategories((current) => mergeCategories([...current, ...normalizedSelectedCategories]));
+            await loadLinkedInTargets();
 
             setSuccessMessage('Settings saved. Your automation configuration is now updated.');
         } catch (error: any) {
@@ -381,31 +514,114 @@ export default function SettingsPage() {
 
                 <div className="grid gap-6 lg:grid-cols-3 mb-6">
                     <div className="lg:col-span-2 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                        <div className="flex items-center justify-between gap-4">
-                            <div className="flex items-center gap-4">
-                                <div className="h-11 w-11 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center">
-                                    <Linkedin className="h-5 w-5" />
+                        <div className="flex flex-col gap-4">
+                            <div className="flex items-center justify-between gap-4">
+                                <div className="flex items-center gap-4">
+                                    <div className="h-11 w-11 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center">
+                                        <Linkedin className="h-5 w-5" />
+                                    </div>
+                                    <div>
+                                        <h2 className="text-lg font-bold text-slate-900">LinkedIn Connection</h2>
+                                        <p className="text-sm text-slate-600">
+                                            Required for manual publishing and auto posting.
+                                        </p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <h2 className="text-lg font-bold text-slate-900">LinkedIn Connection</h2>
-                                    <p className="text-sm text-slate-600">
-                                        Required for manual publishing and auto posting.
-                                    </p>
+
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => loadLinkedInTargets()}
+                                        disabled={isLinkedInLoading}
+                                        className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+                                    >
+                                        {isLinkedInLoading ? (
+                                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                        ) : (
+                                            <RefreshCw className="h-3.5 w-3.5" />
+                                        )}
+                                        Refresh
+                                    </button>
+
+                                    {isLinkedInConnected ? (
+                                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
+                                            <CheckCircle2 className="h-3.5 w-3.5" />
+                                            Connected
+                                        </span>
+                                    ) : (
+                                        <button
+                                            onClick={handleConnectLinkedIn}
+                                            className="rounded-lg bg-sky-700 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-800 transition-colors"
+                                        >
+                                            Connect
+                                        </button>
+                                    )}
                                 </div>
                             </div>
 
-                            {isLinkedInConnected ? (
-                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
-                                    <CheckCircle2 className="h-3.5 w-3.5" />
-                                    Connected
-                                </span>
-                            ) : (
-                                <button
-                                    onClick={handleConnectLinkedIn}
-                                    className="rounded-lg bg-sky-700 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-800 transition-colors"
-                                >
-                                    Connect
-                                </button>
+                            {isLinkedInConnected && linkedinProfile && (
+                                <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3">
+                                    <div className="flex items-start gap-2">
+                                        <UserCircle2 className="h-4 w-4 mt-0.5 text-emerald-700" />
+                                        <div>
+                                            <p className="text-sm font-semibold text-emerald-900">
+                                                Connected as {linkedinProfile.name}
+                                            </p>
+                                            <p className="text-xs text-emerald-700">
+                                                {linkedinProfile.email || linkedinProfile.urn || 'LinkedIn account connected'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {isLinkedInConnected && (
+                                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                                    <div className="flex items-center justify-between gap-2 mb-2">
+                                        <p className="text-sm font-semibold text-slate-900">Managed LinkedIn Pages</p>
+                                        <span className="text-xs text-slate-500">
+                                            {linkedinOrganizations.length} found
+                                        </span>
+                                    </div>
+
+                                    {linkedinOrganizations.length > 0 ? (
+                                        <div className="grid gap-2 sm:grid-cols-2">
+                                            {linkedinOrganizations.map((org) => (
+                                                <button
+                                                    key={org.id}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setOrganizationId(org.id);
+                                                        if (targetMode === 'person') {
+                                                            setTargetMode('organization');
+                                                        }
+                                                    }}
+                                                    className={`text-left rounded-lg border px-3 py-2 transition-colors ${
+                                                        organizationId === org.id
+                                                            ? 'border-sky-500 bg-sky-50'
+                                                            : 'border-slate-200 bg-white hover:border-slate-300'
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center gap-2">
+                                                        <Building2 className="h-4 w-4 text-slate-500" />
+                                                        <p className="text-sm font-semibold text-slate-900">{org.name}</p>
+                                                    </div>
+                                                    <p className="text-xs text-slate-500 mt-1">ID: {org.id}</p>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <p className="text-xs text-slate-600">
+                                            No pages returned by LinkedIn API for this account. You can still enter a Page ID manually below.
+                                        </p>
+                                    )}
+
+                                    {linkedinScopes.length > 0 && (
+                                        <p className="text-[11px] text-slate-500 mt-3">
+                                            Scopes: {linkedinScopes.join(', ')}
+                                        </p>
+                                    )}
+                                </div>
                             )}
                         </div>
                     </div>
@@ -496,8 +712,8 @@ export default function SettingsPage() {
                         </div>
 
                         <label className="block text-sm font-semibold text-slate-800 mb-2">Topic categories</label>
-                        <div className="flex flex-wrap gap-2 mb-4">
-                            {CATEGORIES.map((category) => (
+                        <div className="flex flex-wrap gap-2 mb-3">
+                            {visibleCategories.map((category) => (
                                 <button
                                     type="button"
                                     key={category}
@@ -511,6 +727,50 @@ export default function SettingsPage() {
                                     {category}
                                 </button>
                             ))}
+                        </div>
+
+                        <div className="flex items-center gap-3 mb-4">
+                            {availableCategories.length > 10 && (
+                                <button
+                                    type="button"
+                                    onClick={() => setShowAllCategories((current) => !current)}
+                                    className="text-xs font-semibold text-sky-700 hover:text-sky-800"
+                                >
+                                    {showAllCategories
+                                        ? 'Show fewer categories'
+                                        : `Show more (${availableCategories.length - 10})`}
+                                </button>
+                            )}
+                            <span className="text-xs text-slate-500">
+                                Selected: {categories.length}
+                            </span>
+                        </div>
+
+                        <div className="mb-4 rounded-xl border border-slate-200 p-3">
+                            <p className="text-sm font-semibold text-slate-900 mb-2">Add custom category</p>
+                            <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    value={customCategory}
+                                    onChange={(event) => setCustomCategory(event.target.value)}
+                                    onKeyDown={(event) => {
+                                        if (event.key === 'Enter') {
+                                            event.preventDefault();
+                                            addCustomCategory();
+                                        }
+                                    }}
+                                    placeholder="e.g. FinTech, GenAI, Creator Economy"
+                                    className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={addCustomCategory}
+                                    className="inline-flex items-center gap-1 rounded-lg bg-sky-700 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-800"
+                                >
+                                    <Plus className="h-4 w-4" />
+                                    Add
+                                </button>
+                            </div>
                         </div>
 
                         <div className="flex items-center justify-between rounded-xl border border-slate-200 p-3">
@@ -618,13 +878,29 @@ export default function SettingsPage() {
                                 ))}
                             </div>
                             {(targetMode === 'organization' || targetMode === 'both') && (
-                                <input
-                                    type="text"
-                                    value={organizationId}
-                                    onChange={(event) => setOrganizationId(event.target.value)}
-                                    placeholder="Organization/Page ID"
-                                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                />
+                                <div className="space-y-2">
+                                    {linkedinOrganizations.length > 0 && (
+                                        <select
+                                            value={organizationId}
+                                            onChange={(event) => setOrganizationId(event.target.value)}
+                                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                        >
+                                            <option value="">Select LinkedIn Page</option>
+                                            {linkedinOrganizations.map((org) => (
+                                                <option key={org.id} value={org.id}>
+                                                    {org.name} ({org.id})
+                                                </option>
+                                            ))}
+                                        </select>
+                                    )}
+                                    <input
+                                        type="text"
+                                        value={organizationId}
+                                        onChange={(event) => setOrganizationId(event.target.value)}
+                                        placeholder="Organization/Page ID"
+                                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                    />
+                                </div>
                             )}
                         </div>
 
@@ -690,13 +966,24 @@ function Toggle({ enabled, onChange }: { enabled: boolean; onChange: () => void 
             type="button"
             aria-pressed={enabled}
             onClick={onChange}
-            className={`relative h-7 w-12 rounded-full transition-colors ${enabled ? 'bg-slate-900' : 'bg-slate-300'}`}
+            className={`relative inline-flex h-8 w-16 items-center rounded-full border transition-all ${
+                enabled
+                    ? 'border-emerald-600 bg-emerald-600'
+                    : 'border-slate-300 bg-slate-200'
+            }`}
         >
             <span
-                className={`absolute top-1 h-5 w-5 rounded-full bg-white transition-transform ${
-                    enabled ? 'translate-x-6' : 'translate-x-1'
+                className={`absolute top-0.5 h-7 w-7 rounded-full bg-white shadow-sm transition-transform ${
+                    enabled ? 'translate-x-8' : 'translate-x-0.5'
                 }`}
             />
+            <span
+                className={`pointer-events-none absolute text-[10px] font-bold uppercase tracking-wide ${
+                    enabled ? 'left-2 text-white' : 'right-2 text-slate-600'
+                }`}
+            >
+                {enabled ? 'On' : 'Off'}
+            </span>
         </button>
     );
 }
