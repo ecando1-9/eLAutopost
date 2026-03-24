@@ -26,7 +26,10 @@ interface Post {
     status: 'draft' | 'scheduled' | 'posted' | 'failed';
     scheduled_at?: string;
     posted_at?: string;
+    linkedin_url?: string;
     error_message?: string;
+    target?: 'person' | 'organization';
+    organization_id?: string;
     created_at: string;
 }
 
@@ -36,6 +39,7 @@ export default function PostsPage() {
     const [posts, setPosts] = useState<Post[]>([]);
     const [loading, setLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState<string>('all');
+    const [actionPostId, setActionPostId] = useState<string | null>(null);
 
     useEffect(() => {
         fetchPosts();
@@ -89,6 +93,54 @@ export default function PostsPage() {
                 {status.charAt(0).toUpperCase() + status.slice(1)}
             </span>
         );
+    };
+
+    const runPostAction = async (
+        postId: string,
+        action: 'publish' | 'schedule' | 'delete',
+        post?: Post
+    ) => {
+        setActionPostId(postId);
+        try {
+            let response: Response;
+
+            if (action === 'publish') {
+                response = await fetch(`/api/v1/posts/${postId}/publish`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        target: post?.target || 'person',
+                        organization_id: post?.organization_id || '',
+                    }),
+                });
+            } else if (action === 'schedule') {
+                const scheduledAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+                response = await fetch(`/api/v1/posts/${postId}/schedule`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        scheduled_at: scheduledAt,
+                        target: post?.target || 'person',
+                        organization_id: post?.organization_id || '',
+                    }),
+                });
+            } else {
+                response = await fetch(`/api/v1/posts/${postId}`, {
+                    method: 'DELETE',
+                });
+            }
+
+            if (!response.ok) {
+                const text = await response.text();
+                throw new Error(text || `Failed to ${action} post`);
+            }
+
+            await fetchPosts();
+        } catch (error) {
+            console.error(`Failed to ${action} post:`, error);
+        } finally {
+            setActionPostId(null);
+        }
     };
 
     return (
@@ -199,6 +251,12 @@ export default function PostsPage() {
                                     </div>
                                 )}
 
+                                <div className="mb-4">
+                                    <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200">
+                                        Target: {post.target === 'organization' ? 'LinkedIn Page' : 'LinkedIn Profile'}
+                                    </span>
+                                </div>
+
                                 {/* Posted Time */}
                                 {post.posted_at && (
                                     <div className="mb-4 flex items-center text-sm text-green-600">
@@ -218,17 +276,42 @@ export default function PostsPage() {
 
                                 {/* Actions */}
                                 <div className="flex gap-2 pt-4 border-t border-gray-200">
-                                    <button className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors">
-                                        <Send className="h-4 w-4" />
-                                        View Details
-                                    </button>
-                                    {post.status === 'draft' && (
-                                        <button className="flex items-center gap-2 px-4 py-2 text-sm bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors">
+                                    {(post.status === 'draft' || post.status === 'failed') && (
+                                        <button
+                                            onClick={() => runPostAction(post.id, 'publish', post)}
+                                            disabled={actionPostId === post.id}
+                                            className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors disabled:opacity-60"
+                                        >
+                                            {actionPostId === post.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                                            Publish Now
+                                        </button>
+                                    )}
+                                    {(post.status === 'draft' || post.status === 'failed') && (
+                                        <button
+                                            onClick={() => runPostAction(post.id, 'schedule', post)}
+                                            disabled={actionPostId === post.id}
+                                            className="flex items-center gap-2 px-4 py-2 text-sm bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-60"
+                                        >
                                             <Calendar className="h-4 w-4" />
                                             Schedule
                                         </button>
                                     )}
-                                    <button className="flex items-center gap-2 px-4 py-2 text-sm bg-red-50 text-red-700 rounded-lg hover:bg-red-100 transition-colors ml-auto">
+                                    {post.status === 'posted' && post.linkedin_url && (
+                                        <a
+                                            href={post.linkedin_url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors"
+                                        >
+                                            <Send className="h-4 w-4" />
+                                            View Post
+                                        </a>
+                                    )}
+                                    <button
+                                        onClick={() => runPostAction(post.id, 'delete', post)}
+                                        disabled={actionPostId === post.id}
+                                        className="flex items-center gap-2 px-4 py-2 text-sm bg-red-50 text-red-700 rounded-lg hover:bg-red-100 transition-colors ml-auto disabled:opacity-60"
+                                    >
                                         <Trash2 className="h-4 w-4" />
                                         Delete
                                     </button>

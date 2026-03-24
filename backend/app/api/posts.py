@@ -17,7 +17,8 @@ Security:
 
 from fastapi import APIRouter, HTTPException, status, Request
 from typing import List, Optional
-from datetime import datetime
+from datetime import timedelta
+from pydantic import BaseModel
 
 from ..models.schemas import (
     PostCreate,
@@ -29,6 +30,7 @@ from ..models.schemas import (
     PaginationParams
 )
 from ..core.config import logger
+from ..core.datetime_utils import utc_now, parse_datetime_utc
 from ..services.database import supabase_client, log_audit_event
 from ..services.linkedin import linkedin_service
 from ..core.security import get_client_ip
@@ -36,6 +38,44 @@ from ..middleware.rate_limit import limiter, POSTING_RATE_LIMIT
 
 
 router = APIRouter()
+
+
+class SchedulePostRequest(BaseModel):
+    scheduled_at: Optional[str] = None
+    target: Optional[str] = "person"
+    organization_id: Optional[str] = None
+
+
+_POST_TARGET_COLUMNS_AVAILABLE: Optional[bool] = None
+
+
+def _supports_post_target_columns() -> bool:
+    """
+    Detect whether posts table contains target/organization_id columns.
+    Allows backward compatibility before SQL migration is applied.
+    """
+    global _POST_TARGET_COLUMNS_AVAILABLE
+    if _POST_TARGET_COLUMNS_AVAILABLE is not None:
+        return _POST_TARGET_COLUMNS_AVAILABLE
+
+    try:
+        supabase_client.admin.table("posts").select(
+            "target,organization_id"
+        ).limit(1).execute()
+        _POST_TARGET_COLUMNS_AVAILABLE = True
+    except Exception:
+        _POST_TARGET_COLUMNS_AVAILABLE = False
+
+    return _POST_TARGET_COLUMNS_AVAILABLE
+
+
+def _normalize_post_record(record: dict) -> dict:
+    """Fill defaults for optional target fields."""
+    if "target" not in record:
+        record["target"] = "person"
+    if "organization_id" not in record:
+        record["organization_id"] = None
+    return record
 
 
 # =============================================================================
@@ -57,7 +97,7 @@ async def create_post(request: Request, post_data: PostCreate, user_id: str):
     """
     try:
         # Create post in database
-        result = supabase_client.admin.table("posts").insert({
+        insert_data = {
             "user_id": user_id,
             "topic": post_data.topic,
             "hook": post_data.hook,
@@ -66,7 +106,13 @@ async def create_post(request: Request, post_data: PostCreate, user_id: str):
             "content_type": post_data.content_type.value,
             "image_url": post_data.image_url,
             "status": "draft"
-        }).execute()
+        }
+
+        if _supports_post_target_columns():
+            insert_data["target"] = post_data.target or "person"
+            insert_data["organization_id"] = post_data.organization_id
+
+        result = supabase_client.admin.table("posts").insert(insert_data).execute()
         
         post = result.data[0]
         
@@ -80,7 +126,7 @@ async def create_post(request: Request, post_data: PostCreate, user_id: str):
         
         logger.info(f"Post created for user {user_id}: {post['id']}")
         
-        return PostResponse(**post)
+        return PostResponse(**_normalize_post_record(post))
         
     except Exception as e:
         logger.error(f"Failed to create post: {e}")
@@ -125,7 +171,7 @@ async def list_posts(
         
         result = query.execute()
         
-        return [PostResponse(**post) for post in result.data]
+        return [PostResponse(**_normalize_post_record(post)) for post in result.data]
         
     except Exception as e:
         logger.error(f"Failed to list posts: {e}")
@@ -159,7 +205,7 @@ async def get_post(request: Request, post_id: str, user_id: str):
                 detail="Post not found"
             )
         
-        return PostResponse(**result.data)
+        return PostResponse(**_normalize_post_record(result.data))
         
     except HTTPException:
         raise
@@ -201,6 +247,11 @@ async def update_post(
             update_data["image_url"] = post_update.image_url
         if post_update.status is not None:
             update_data["status"] = post_update.status.value
+        if _supports_post_target_columns():
+            if post_update.target is not None:
+                update_data["target"] = post_update.target
+            if post_update.organization_id is not None:
+                update_data["organization_id"] = post_update.organization_id
         
         if not update_data:
             raise HTTPException(
@@ -227,7 +278,7 @@ async def update_post(
             ip_address=get_client_ip(request)
         )
         
-        return PostResponse(**result.data[0])
+        return PostResponse(**_normalize_post_record(result.data[0]))
         
     except HTTPException:
         raise
@@ -286,7 +337,13 @@ async def delete_post(request: Request, post_id: str, user_id: str):
 
 @router.post("/{post_id}/publish", response_model=LinkedInPostResponse)
 @limiter.limit(POSTING_RATE_LIMIT)
-async def publish_to_linkedin(request: Request, post_id: str, user_id: str):
+async def publish_to_linkedin(
+    request: Request,
+    post_id: str,
+    user_id: str,
+    target: Optional[str] = None,
+    organization_id: Optional[str] = None
+):
     """
     Publish a post to LinkedIn.
     
@@ -323,34 +380,39 @@ async def publish_to_linkedin(request: Request, post_id: str, user_id: str):
                 detail="Post already published"
             )
         
-        # Update status to pending
-        supabase_client.admin.table("posts").update({
-            "status": "pending"
-        }).eq("id", post_id).execute()
-        
         try:
+            resolved_target = target or post.get("target") or "person"
+            resolved_organization_id = organization_id or post.get("organization_id")
+            if resolved_target not in {"person", "organization"}:
+                resolved_target = "person"
+
             # Post to LinkedIn
             if post["image_url"]:
                 linkedin_response = await linkedin_service.post_with_image(
                     user_id=user_id,
                     text=post["caption"],
-                    image_url=post["image_url"]
+                    image_url=post["image_url"],
+                    target=resolved_target,
+                    organization_id=resolved_organization_id
                 )
             else:
                 linkedin_response = await linkedin_service.post_text(
                     user_id=user_id,
-                    text=post["caption"]
+                    text=post["caption"],
+                    target=resolved_target,
+                    organization_id=resolved_organization_id
                 )
             
             # Extract post ID from response
             linkedin_post_id = linkedin_response.get("id", "")
+            linkedin_url = linkedin_service._build_post_url(linkedin_post_id)
             
             # Update post status to posted
             supabase_client.admin.table("posts").update({
                 "status": "posted",
-                "posted_at": datetime.utcnow().isoformat(),
+                "posted_at": utc_now().isoformat(),
                 "linkedin_post_id": linkedin_post_id,
-                "linkedin_url": f"https://www.linkedin.com/feed/update/{linkedin_post_id}"
+                "linkedin_url": linkedin_url
             }).eq("id", post_id).execute()
             
             # Log event
@@ -369,8 +431,8 @@ async def publish_to_linkedin(request: Request, post_id: str, user_id: str):
             return LinkedInPostResponse(
                 post_id=post_id,
                 status=PostStatus.POSTED,
-                posted_at=datetime.utcnow(),
-                linkedin_url=f"https://www.linkedin.com/feed/update/{linkedin_post_id}",
+                posted_at=utc_now(),
+                linkedin_url=linkedin_url,
                 error_message=None
             )
             
@@ -399,6 +461,90 @@ async def publish_to_linkedin(request: Request, post_id: str, user_id: str):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to publish post"
+        )
+
+
+@router.post("/{post_id}/schedule", response_model=PostResponse)
+@limiter.limit("30/minute")
+async def schedule_post(
+    request: Request,
+    post_id: str,
+    body: SchedulePostRequest,
+    user_id: str
+):
+    """
+    Schedule a draft/failed post for later publishing.
+    """
+    try:
+        post_result = supabase_client.admin.table("posts").select("*").eq(
+            "id", post_id
+        ).eq("user_id", user_id).single().execute()
+
+        if not post_result.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Post not found"
+            )
+
+        current_status = post_result.data.get("status")
+        if current_status == "posted":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Posted content cannot be rescheduled"
+            )
+
+        target_dt = None
+        if body.scheduled_at:
+            try:
+                target_dt = parse_datetime_utc(body.scheduled_at)
+            except Exception:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid scheduled_at datetime format"
+                )
+        if target_dt is None:
+            target_dt = utc_now() + timedelta(minutes=30)
+
+        update_data = {
+            "status": "scheduled",
+            "scheduled_at": target_dt.isoformat(),
+            "error_message": None
+        }
+        if _supports_post_target_columns():
+            if body.target in {"person", "organization"}:
+                update_data["target"] = body.target
+            if body.organization_id is not None:
+                update_data["organization_id"] = body.organization_id
+
+        update_result = supabase_client.admin.table("posts").update(update_data).eq(
+            "id", post_id
+        ).eq("user_id", user_id).execute()
+
+        if not update_result.data:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to schedule post"
+            )
+
+        await log_audit_event(
+            user_id=user_id,
+            event_type="post_scheduled",
+            details={
+                "post_id": post_id,
+                "scheduled_at": target_dt.isoformat()
+            },
+            ip_address=get_client_ip(request)
+        )
+
+        return PostResponse(**_normalize_post_record(update_result.data[0]))
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to schedule post {post_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to schedule post"
         )
 
 

@@ -15,9 +15,10 @@ Security:
 """
 
 from typing import List, Dict, Any, Optional
-from datetime import datetime, timedelta
+from datetime import timedelta
 import random
 from ..core.config import logger
+from ..core.datetime_utils import utc_now
 from ..services.database import supabase_client
 from ..services.content_generation import ContentGenerationService
 from ..services.scheduler import scheduler_service
@@ -115,7 +116,7 @@ class ContentQueueService:
                 scheduled_at = None
                 if schedule and schedule.get("is_active"):
                     # Calculate next posting slot
-                    base_time = datetime.utcnow() + timedelta(days=i)
+                    base_time = utc_now().replace(tzinfo=None) + timedelta(days=i)
                     scheduled_at = scheduler_service.calculate_next_post_time(
                         schedule,
                         current_time=base_time
@@ -126,7 +127,11 @@ class ContentQueueService:
                     "user_id": user_id,
                     "topic": topic,
                     "hook": content.hook,
-                    "image_prompt": content.image_prompt,
+                    "image_prompt": (
+                        content.image_prompt
+                        if getattr(content, "image_prompt", None)
+                        else f"Professional LinkedIn visual for {topic}"
+                    ),
                     "caption": content.caption,
                     "content_type": content.content_type.value,
                     "status": "scheduled" if scheduled_at else "draft",
@@ -213,7 +218,7 @@ class ContentQueueService:
             List of recent topics
         """
         try:
-            cutoff_date = (datetime.utcnow() - timedelta(days=days)).isoformat()
+            cutoff_date = (utc_now().replace(tzinfo=None) - timedelta(days=days)).isoformat()
             
             result = supabase_client.admin.table("posts").select(
                 "topic"

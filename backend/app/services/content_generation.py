@@ -15,8 +15,12 @@ Security:
 """
 
 from typing import Dict, Any, Optional
-from google import genai
-from google.genai import types
+try:
+    from google import genai
+    from google.genai import types
+except Exception:
+    genai = None
+    types = None
 from ..core.config import settings, logger
 from ..core.security import sanitize_input
 from ..models.schemas import ContentType, GeneratedContent
@@ -35,7 +39,7 @@ class ContentGenerationService:
     
     def __init__(self):
         """Initialize the Gemini content strategist."""
-        if settings.GOOGLE_API_KEY:
+        if settings.GOOGLE_API_KEY and genai and types:
             self.client = genai.Client(api_key=settings.GOOGLE_API_KEY)
             self.model_name = settings.GOOGLE_MODEL
             self.fallback_model_name = "gemini-2.5-flash"
@@ -45,7 +49,10 @@ class ContentGenerationService:
             self.model_name = settings.GOOGLE_MODEL
             self.fallback_model_name = "gemini-2.5-flash"
             self.configured = False
-            logger.warning("GOOGLE_API_KEY not set. Content generation will return mock data.")
+            logger.warning(
+                "Gemini client unavailable (missing key or package). "
+                "Content generation will return mock data."
+            )
 
     def _generate_with_model_fallback(self, prompt: str, temperature: float):
         """
@@ -94,6 +101,7 @@ class ContentGenerationService:
                 return GeneratedContent(
                     hook="The one mistake every founder makes.",
                     caption="Most founders focus on features, not solutions. Here's why that's a mistake...",
+                    image_prompt="Minimal professional illustration of startup founders discussing product strategy on a whiteboard, clean LinkedIn style.",
                     slides=[
                         "Slide 1: Why most startups fail early.",
                         "Slide 2: The feature-trap explained.",
@@ -129,6 +137,7 @@ Output Structure (JSON ONLY):
   "hook": "Exactly 3-7 words. A massive scroll-stopper.",
   "hook_variations": ["Variation 1", "Variation 2", "Variation 3", "Variation 4", "Variation 5"],
   "caption": "Engaging caption with value, short paragraphs, and no generic AI fluff.",
+  "image_prompt": "A short, professional visual generation prompt (optional but preferred).",
   "slides": [
     "Slide 1: Viral hook/Title",
     "Slide 2: Identifying the deep problem",
@@ -185,11 +194,20 @@ Respond ONLY with valid JSON.
                 "insight": ContentType.INSIGHT,
                 "future": ContentType.FUTURE
             }
+
+            image_prompt = content_json.get("image_prompt")
+            if not image_prompt:
+                image_prompt = await self._generate_image_prompt(
+                    topic=topic,
+                    hook=content_json.get("hook", ""),
+                    content_type=type_mapping.get(raw_type, ContentType.INSIGHT)
+                )
             
             return GeneratedContent(
                 hook=content_json.get("hook", ""),
                 hook_variations=content_json.get("hook_variations", []),
                 caption=content_json.get("caption", ""),
+                image_prompt=image_prompt,
                 slides=content_json.get("slides", []),
                 cta=content_json.get("cta", ""),
                 hashtags=content_json.get("hashtags", []),
@@ -281,6 +299,31 @@ Respond ONLY with the comma-separated tags."""
             return tags[:5]
         except:
             return ["LinkedIn", "Professional", "Update"]
+
+    async def _generate_image_prompt(
+        self,
+        topic: str,
+        hook: str,
+        content_type: ContentType
+    ) -> str:
+        prompt = f"""Create a single image prompt for a LinkedIn post visual.
+Topic: {topic}
+Hook: {hook}
+Type: {content_type.value}
+
+Requirements:
+- Keep it under 60 words
+- Professional and business-friendly
+- No text overlays
+- Modern LinkedIn aesthetic
+
+Respond with only the prompt text."""
+        try:
+            generated = await self._async_generate(prompt, temperature=0.5)
+            cleaned = generated.strip().replace('"', "")
+            return cleaned or f"Professional LinkedIn visual for {topic}"
+        except Exception:
+            return f"Professional LinkedIn visual for {topic}"
 
 content_service = ContentGenerationService()
 

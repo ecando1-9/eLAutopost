@@ -15,9 +15,8 @@ Security:
 """
 
 from typing import List, Dict, Any
-from datetime import datetime
-import asyncio
 from ..core.config import logger
+from ..core.datetime_utils import utc_now
 from ..services.database import supabase_client
 from ..services.scheduler import scheduler_service
 from ..services.linkedin import linkedin_service
@@ -103,7 +102,9 @@ class PostingWorker:
             result = await linkedin_service.create_post(
                 user_id=user_id,
                 text=post["caption"],
-                image_url=post.get("image_url")
+                image_url=post.get("image_url"),
+                target=post.get("target"),
+                organization_id=post.get("organization_id")
             )
             
             if result.get("success"):
@@ -153,7 +154,7 @@ class PostingWorker:
         try:
             supabase_client.admin.table("posts").update({
                 "status": "posted",
-                "posted_at": datetime.utcnow().isoformat(),
+                "posted_at": utc_now().isoformat(),
                 "linkedin_post_id": linkedin_post_id,
                 "linkedin_url": linkedin_url,
                 "error_message": None

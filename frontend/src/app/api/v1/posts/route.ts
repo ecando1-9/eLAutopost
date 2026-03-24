@@ -7,7 +7,7 @@ const BACKEND_URL = RAW_BACKEND_URL.endsWith('/api/v1')
     ? RAW_BACKEND_URL
     : `${RAW_BACKEND_URL.replace(/\/$/, '')}/api/v1`;
 
-export async function GET(_request: Request) {
+export async function GET(request: Request) {
     try {
         const supabase = createRouteHandlerClient({ cookies });
         const { data: { session } } = await supabase.auth.getSession();
@@ -16,25 +16,28 @@ export async function GET(_request: Request) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const response = await fetch(`${BACKEND_URL}/user/schedule`, {
+        const incomingUrl = new URL(request.url);
+        const backendUrl = new URL(`${BACKEND_URL}/posts`);
+        backendUrl.searchParams.set('user_id', session.user.id);
+
+        for (const [key, value] of incomingUrl.searchParams.entries()) {
+            backendUrl.searchParams.set(key, value);
+        }
+
+        const response = await fetch(backendUrl.toString(), {
             headers: {
-                'Authorization': `Bearer ${session.access_token}`,
+                Authorization: `Bearer ${session.access_token}`,
             },
             cache: 'no-store',
         });
 
-        if (!response.ok) {
-            const errorText = await response.text();
-            return NextResponse.json(
-                { error: 'Failed to fetch schedule', details: errorText },
-                { status: response.status }
-            );
-        }
-
-        const data = await response.json();
-        return NextResponse.json(data);
+        const text = await response.text();
+        return new NextResponse(text, {
+            status: response.status,
+            headers: { 'Content-Type': response.headers.get('content-type') || 'application/json' },
+        });
     } catch (error: any) {
-        console.error('Error loading schedule:', error);
+        console.error('Error fetching posts:', error);
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 }
@@ -49,28 +52,22 @@ export async function POST(request: Request) {
         }
 
         const body = await request.json();
-
-        const response = await fetch(`${BACKEND_URL}/user/schedule`, {
+        const response = await fetch(`${BACKEND_URL}/posts?user_id=${session.user.id}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${session.access_token}`,
+                Authorization: `Bearer ${session.access_token}`,
             },
             body: JSON.stringify(body),
         });
 
-        if (!response.ok) {
-            const errorText = await response.text();
-            return NextResponse.json(
-                { error: 'Failed to update schedule', details: errorText },
-                { status: response.status }
-            );
-        }
-
-        const data = await response.json();
-        return NextResponse.json(data);
+        const text = await response.text();
+        return new NextResponse(text, {
+            status: response.status,
+            headers: { 'Content-Type': response.headers.get('content-type') || 'application/json' },
+        });
     } catch (error: any) {
-        console.error('Error updating schedule:', error);
+        console.error('Error creating post:', error);
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 }

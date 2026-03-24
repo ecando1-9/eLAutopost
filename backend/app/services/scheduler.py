@@ -83,11 +83,12 @@ class SchedulerService:
             candidate_weekday = candidate_date.weekday()
             
             if candidate_weekday in scheduled_weekdays:
-                candidate_datetime = datetime.combine(
-                    candidate_date,
-                    post_time,
-                    tzinfo=user_tz
-                )
+                candidate_naive = datetime.combine(candidate_date, post_time)
+                try:
+                    candidate_datetime = user_tz.localize(candidate_naive, is_dst=None)
+                except Exception:
+                    # Handle DST edge cases by selecting the first valid offset.
+                    candidate_datetime = user_tz.localize(candidate_naive, is_dst=True)
                 
                 # If it's today, make sure time hasn't passed
                 if days_ahead == 0 and candidate_datetime <= current_local:

@@ -12,10 +12,9 @@ Security:
 """
 
 from typing import List, Dict, Any
-from datetime import datetime, timedelta
-import asyncio
 import random
 from ..core.config import logger
+from ..core.datetime_utils import utc_now
 from ..services.database import supabase_client
 from ..services.scheduler import scheduler_service
 from ..services.content_generation import content_service
@@ -58,7 +57,7 @@ class AutoGeneratorWorker:
                         
                     # 3. Check if user already has sufficient scheduled posts
                     # To keep it simple, we generate if they have 0 upcoming scheduled posts
-                    now = datetime.utcnow().isoformat()
+                    now = utc_now().isoformat()
                     scheduled_posts_result = supabase_client.admin.table("posts").select(
                         "id"
                     ).eq("user_id", user_id).eq("status", "scheduled").gte("scheduled_at", now).execute()
@@ -103,11 +102,16 @@ class AutoGeneratorWorker:
                     post_data = {
                         "user_id": user_id,
                         "topic": topic,
+                        "hook": generated.hook,
+                        "image_prompt": (
+                            generated.image_prompt
+                            if getattr(generated, "image_prompt", None)
+                            else f"Professional LinkedIn visual for {topic}"
+                        ),
                         "caption": final_caption,
                         "scheduled_at": next_post_time.isoformat(),
                         "status": "scheduled",
-                        "content_type": generated.content_type.value,
-                        "is_auto_generated": True
+                        "content_type": generated.content_type.value
                     }
                     
                     supabase_client.admin.table("posts").insert(post_data).execute()

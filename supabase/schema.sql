@@ -139,6 +139,8 @@ CREATE TABLE IF NOT EXISTS posts (
     linkedin_post_id VARCHAR(255),
     linkedin_url TEXT,
     error_message TEXT,
+    target VARCHAR(20) DEFAULT 'person' CHECK (target IN ('person', 'organization')),
+    organization_id VARCHAR(64),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     posted_at TIMESTAMP WITH TIME ZONE

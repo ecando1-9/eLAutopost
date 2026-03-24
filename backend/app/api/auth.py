@@ -20,6 +20,7 @@ from fastapi import APIRouter, HTTPException, status, Request, Depends
 from fastapi.responses import RedirectResponse
 from typing import Optional
 import secrets
+from urllib.parse import urlencode
 
 from ..models.schemas import (
     UserSignup,
@@ -226,25 +227,18 @@ async def google_auth(request: Request):
     """
     Initiate Google OAuth flow.
     
-    Redirects user to Google's OAuth consent screen.
+    Redirects user to Supabase OAuth (Google provider).
     """
-    # Generate state for CSRF protection
-    state = secrets.token_urlsafe(32)
-    
-    # Store state in session (you'd use Redis in production)
-    # For now, we'll validate it in the callback
-    
-    # Build Google OAuth URL
-    google_auth_url = (
-        f"https://accounts.google.com/o/oauth2/v2/auth?"
-        f"client_id={settings.GOOGLE_CLIENT_ID}&"
-        f"redirect_uri={settings.LINKEDIN_REDIRECT_URI.replace('linkedin', 'google')}&"
-        f"response_type=code&"
-        f"scope=openid email profile&"
-        f"state={state}"
+    redirect_to = f"{settings.BACKEND_CORS_ORIGINS[0]}/auth/v1/callback"
+    query = urlencode(
+        {
+            "provider": "google",
+            "redirect_to": redirect_to,
+        }
     )
-    
-    return RedirectResponse(url=google_auth_url)
+    supabase_oauth_url = f"{settings.SUPABASE_URL}/auth/v1/authorize?{query}"
+
+    return RedirectResponse(url=supabase_oauth_url)
 
 
 @router.get("/google/callback")
@@ -253,20 +247,11 @@ async def google_callback(request: Request, code: str, state: str):
     """
     Handle Google OAuth callback.
     
-    Exchanges code for token and creates/logs in user.
+    Legacy endpoint retained for compatibility.
+    Google OAuth is handled through Supabase callback flow.
     """
-    # TODO: Implement Google OAuth callback
-    # This would:
-    # 1. Validate state (CSRF protection)
-    # 2. Exchange code for token
-    # 3. Get user info from Google
-    # 4. Create or login user
-    # 5. Return JWT token
-    
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Google OAuth not yet implemented"
-    )
+    logger.info("Legacy /google/callback hit; redirecting to frontend login flow")
+    return RedirectResponse(url=f"{settings.BACKEND_CORS_ORIGINS[0]}/login")
 
 
 # =============================================================================

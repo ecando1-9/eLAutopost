@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -39,6 +39,17 @@ interface FormData {
     tone: string;
 }
 
+type PublishTarget = 'person' | 'organization' | 'both';
+
+interface LocalPreferences {
+    defaultGoal?: string;
+    defaultAudience?: string;
+    defaultStyle?: string;
+    defaultTone?: string;
+    targetMode?: PublishTarget;
+    organizationId?: string;
+}
+
 // Wizard Options
 const goals = [
     { id: 'Reach', label: 'Increase Reach', icon: Target, desc: 'Optimized for impressions and virality' },
@@ -71,12 +82,14 @@ const tones = ['Professional', 'Casual', 'Bold', 'Witty', 'Academic'];
 
 export default function CreateContentPage() {
     const router = useRouter();
+    const searchParams = useSearchParams();
     const supabase = createClientComponentClient();
     
     // UI State
     const [currentStep, setCurrentStep] = useState<Step>(1);
     const [loading, setLoading] = useState(false);
     const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+    const [isSavingPost, setIsSavingPost] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
     
@@ -93,6 +106,15 @@ export default function CreateContentPage() {
     // Results State
     const [result, setResult] = useState<any>(null);
     const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+    const [targetMode, setTargetMode] = useState<PublishTarget>('person');
+    const [organizationId, setOrganizationId] = useState('');
+    const [scheduledAt, setScheduledAt] = useState(() => {
+        const base = new Date();
+        base.setDate(base.getDate() + 1);
+        base.setHours(9, 0, 0, 0);
+        const tzOffsetMs = base.getTimezoneOffset() * 60000;
+        return new Date(base.getTime() - tzOffsetMs).toISOString().slice(0, 16);
+    });
 
     // Template/Theme Data
     const templates = [
@@ -103,6 +125,75 @@ export default function CreateContentPage() {
         { id: 'gradient', name: 'Sunset Gradient', bg: 'bg-gradient-to-br from-orange-400 to-pink-600', text: 'text-white', border: 'border-white/20', label: 'text-orange-100' },
     ];
     const [activeTheme, setActiveTheme] = useState(templates[0]);
+
+    useEffect(() => {
+        try {
+            const raw = localStorage.getItem('elautopost.preferences.v1');
+            if (raw) {
+                const prefs: LocalPreferences = JSON.parse(raw);
+                const normalizedTone = prefs.defaultTone
+                    ? `${prefs.defaultTone.charAt(0).toUpperCase()}${prefs.defaultTone.slice(1).toLowerCase()}`
+                    : undefined;
+                setFormData((prev) => ({
+                    ...prev,
+                    goal: prefs.defaultGoal || prev.goal,
+                    audience: prefs.defaultAudience || prev.audience,
+                    style: prefs.defaultStyle || prev.style,
+                    tone: normalizedTone || prev.tone,
+                }));
+                if (prefs.targetMode) {
+                    setTargetMode(prefs.targetMode);
+                }
+                if (prefs.organizationId) {
+                    setOrganizationId(prefs.organizationId);
+                }
+            }
+        } catch (error) {
+            console.error('Failed to load local preferences:', error);
+        }
+    }, []);
+
+    useEffect(() => {
+        const qpTopic = searchParams.get('topic');
+        const qpGoal = searchParams.get('goal');
+        const qpDate = searchParams.get('scheduleDate');
+
+        if (qpTopic) {
+            setFormData((prev) => ({ ...prev, topic: qpTopic }));
+        }
+        if (qpGoal) {
+            setFormData((prev) => ({ ...prev, goal: qpGoal }));
+        }
+        if (qpDate) {
+            const parsed = new Date(qpDate);
+            if (!Number.isNaN(parsed.getTime())) {
+                parsed.setHours(9, 0, 0, 0);
+                const tzOffsetMs = parsed.getTimezoneOffset() * 60000;
+                setScheduledAt(
+                    new Date(parsed.getTime() - tzOffsetMs).toISOString().slice(0, 16)
+                );
+            }
+        }
+    }, [searchParams]);
+
+    useEffect(() => {
+        const loadBackendDefaults = async () => {
+            try {
+                const response = await fetch('/api/v1/settings', { cache: 'no-store' });
+                if (!response.ok) return;
+                const settings = await response.json();
+                if (settings.default_tone) {
+                    const normalizedTone =
+                        String(settings.default_tone).charAt(0).toUpperCase() +
+                        String(settings.default_tone).slice(1).toLowerCase();
+                    setFormData((prev) => ({ ...prev, tone: normalizedTone }));
+                }
+            } catch (error) {
+                console.error('Failed to load backend defaults:', error);
+            }
+        };
+        loadBackendDefaults();
+    }, []);
 
     // Navigation
     const nextStep = () => setCurrentStep((prev) => (prev < 5 ? (prev + 1) as Step : prev));
@@ -205,6 +296,189 @@ export default function CreateContentPage() {
         setCopied(true);
         toast.success('Caption copied!');
         setTimeout(() => setCopied(false), 2000);
+    };
+
+    const buildPostPayload = () => {
+        if (!result) return null;
+
+        const normalizedType = String(result.content_type || 'insight').toLowerCase();
+        const allowedTypes = ['alert', 'curiosity', 'insight', 'future'];
+        const contentType = allowedTypes.includes(normalizedType) ? normalizedType : 'insight';
+
+        const cta = result.cta ? `\n\n${result.cta}` : '';
+        const hashtags = Array.isArray(result.hashtags) && result.hashtags.length > 0
+            ? `\n\n${result.hashtags.map((h: string) => `#${String(h).replace(/^#/, '')}`).join(' ')}`
+            : '';
+
+        return {
+            topic: formData.topic,
+            hook: result.hook || 'LinkedIn update',
+            image_prompt: result.image_prompt || `Professional LinkedIn visual for ${formData.topic}`,
+            caption: `${result.caption || ''}${cta}${hashtags}`.trim(),
+            content_type: contentType,
+            image_url: null,
+            target: targetMode === 'organization' ? 'organization' : 'person',
+            organization_id: organizationId || null
+        };
+    };
+
+    const createDraftPost = async (
+        override?: { target?: 'person' | 'organization'; organizationId?: string }
+    ): Promise<string> => {
+        const payload = buildPostPayload();
+        if (!payload) {
+            throw new Error('No generated content to save');
+        }
+
+        const finalPayload = {
+            ...payload,
+            target: override?.target || payload.target,
+            organization_id: override?.organizationId ?? payload.organization_id,
+        };
+
+        const response = await fetch('/api/v1/posts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(finalPayload)
+        });
+
+        if (!response.ok) {
+            const text = await response.text();
+            throw new Error(text || 'Failed to create draft');
+        }
+
+        const created = await response.json();
+        return created.id;
+    };
+
+    const publishDraftPost = async (
+        postId: string,
+        target: 'person' | 'organization',
+        orgId?: string
+    ) => {
+        const response = await fetch(`/api/v1/posts/${postId}/publish`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                target,
+                organization_id: target === 'organization' ? (orgId || '') : undefined,
+            }),
+        });
+
+        if (!response.ok) {
+            const text = await response.text();
+            throw new Error(text || 'Failed to publish post');
+        }
+    };
+
+    const scheduleDraftPost = async (
+        postId: string,
+        scheduledDateTime: string
+    ) => {
+        const iso = new Date(scheduledDateTime).toISOString();
+        const response = await fetch(`/api/v1/posts/${postId}/schedule`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ scheduled_at: iso }),
+        });
+
+        if (!response.ok) {
+            const text = await response.text();
+            throw new Error(text || 'Failed to schedule post');
+        }
+    };
+
+    const handleSaveDraft = async () => {
+        setIsSavingPost(true);
+        try {
+            if ((targetMode === 'organization' || targetMode === 'both') && !organizationId.trim()) {
+                throw new Error('Please enter Organization/Page ID for page posting.');
+            }
+
+            if (targetMode === 'both') {
+                await createDraftPost({ target: 'person' });
+                await createDraftPost({ target: 'organization', organizationId: organizationId.trim() });
+            } else if (targetMode === 'organization') {
+                await createDraftPost({ target: 'organization', organizationId: organizationId.trim() });
+            } else {
+                await createDraftPost({ target: 'person' });
+            }
+
+            toast.success('Draft saved to your queue');
+            router.push('/posts');
+        } catch (err: any) {
+            toast.error(err.message || 'Failed to save draft');
+        } finally {
+            setIsSavingPost(false);
+        }
+    };
+
+    const handleSchedulePost = async () => {
+        setIsSavingPost(true);
+        try {
+            if (!scheduledAt) {
+                throw new Error('Please choose a schedule date and time.');
+            }
+            if ((targetMode === 'organization' || targetMode === 'both') && !organizationId.trim()) {
+                throw new Error('Please enter Organization/Page ID for page posting.');
+            }
+
+            if (targetMode === 'both') {
+                const postA = await createDraftPost({ target: 'person' });
+                const postB = await createDraftPost({ target: 'organization', organizationId: organizationId.trim() });
+                await scheduleDraftPost(postA, scheduledAt);
+                await scheduleDraftPost(postB, scheduledAt);
+            } else if (targetMode === 'organization') {
+                const postId = await createDraftPost({ target: 'organization', organizationId: organizationId.trim() });
+                await scheduleDraftPost(postId, scheduledAt);
+            } else {
+                const postId = await createDraftPost({ target: 'person' });
+                await scheduleDraftPost(postId, scheduledAt);
+            }
+
+            toast.success('Post scheduled successfully');
+            router.push('/posts');
+        } catch (err: any) {
+            toast.error(err.message || 'Failed to schedule post');
+        } finally {
+            setIsSavingPost(false);
+        }
+    };
+
+    const handlePostNow = async () => {
+        setIsSavingPost(true);
+        try {
+            if ((targetMode === 'organization' || targetMode === 'both') && !organizationId.trim()) {
+                throw new Error('Please enter Organization/Page ID for page posting.');
+            }
+
+            if (targetMode === 'both') {
+                const personPostId = await createDraftPost({ target: 'person' });
+                await publishDraftPost(personPostId, 'person');
+
+                const orgPostId = await createDraftPost({
+                    target: 'organization',
+                    organizationId: organizationId.trim()
+                });
+                await publishDraftPost(orgPostId, 'organization', organizationId.trim());
+            } else if (targetMode === 'organization') {
+                const postId = await createDraftPost({
+                    target: 'organization',
+                    organizationId: organizationId.trim()
+                });
+                await publishDraftPost(postId, 'organization', organizationId.trim());
+            } else {
+                const postId = await createDraftPost({ target: 'person' });
+                await publishDraftPost(postId, 'person');
+            }
+
+            toast.success('Posted to LinkedIn');
+            router.push('/posts');
+        } catch (err: any) {
+            toast.error(err.message || 'Failed to publish post');
+        } finally {
+            setIsSavingPost(false);
+        }
     };
 
     // UI Components
@@ -501,6 +775,63 @@ export default function CreateContentPage() {
                                         </div>
                                     </div>
                                     
+                                    <div className="bg-white rounded-2xl p-5 border border-gray-200 shadow-sm space-y-4">
+                                        <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">
+                                            Posting Target & Schedule
+                                        </h3>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                                            {[
+                                                { id: 'person', label: 'My Profile' },
+                                                { id: 'organization', label: 'LinkedIn Page' },
+                                                { id: 'both', label: 'Both' },
+                                            ].map((opt) => (
+                                                <button
+                                                    key={opt.id}
+                                                    type="button"
+                                                    onClick={() => setTargetMode(opt.id as PublishTarget)}
+                                                    className={`px-3 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                                                        targetMode === opt.id
+                                                            ? 'bg-indigo-600 text-white'
+                                                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                    }`}
+                                                >
+                                                    {opt.label}
+                                                </button>
+                                            ))}
+                                        </div>
+
+                                        {(targetMode === 'organization' || targetMode === 'both') && (
+                                            <div>
+                                                <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                                                    Organization/Page ID
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={organizationId}
+                                                    onChange={(e) => setOrganizationId(e.target.value)}
+                                                    placeholder="e.g. 123456789"
+                                                    className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-indigo-600 outline-none"
+                                                />
+                                            </div>
+                                        )}
+
+                                        <div>
+                                            <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                                                Schedule Date & Time
+                                            </label>
+                                            <input
+                                                type="datetime-local"
+                                                value={scheduledAt}
+                                                onChange={(e) => setScheduledAt(e.target.value)}
+                                                className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-indigo-600 outline-none"
+                                            />
+                                            <p className="text-xs text-gray-500 mt-1">
+                                                Default is tomorrow 09:00, you can change this.
+                                            </p>
+                                        </div>
+                                    </div>
+
                                     {/* Action Buttons */}
                                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                                         <button 
@@ -511,15 +842,27 @@ export default function CreateContentPage() {
                                             {isGeneratingPdf ? <Loader2 className="h-6 w-6 animate-spin" /> : <Download className="h-6 w-6 mb-2 group-hover:scale-110 transition-transform" />}
                                             <span className="text-xs font-bold">Download PDF</span>
                                         </button>
-                                        <button className="p-4 bg-white border border-gray-200 rounded-xl flex flex-col items-center justify-center hover:border-blue-600 hover:text-blue-600 transition-all group">
+                                        <button
+                                            onClick={handlePostNow}
+                                            disabled={isSavingPost}
+                                            className="p-4 bg-white border border-gray-200 rounded-xl flex flex-col items-center justify-center hover:border-blue-600 hover:text-blue-600 transition-all group disabled:opacity-60"
+                                        >
                                             <Share2 className="h-6 w-6 mb-2 group-hover:scale-110 transition-transform text-blue-600" />
                                             <span className="text-xs font-bold">Post Now</span>
                                         </button>
-                                        <button className="p-4 bg-white border border-gray-200 rounded-xl flex flex-col items-center justify-center hover:border-indigo-600 hover:text-indigo-600 transition-all group">
+                                        <button
+                                            onClick={handleSchedulePost}
+                                            disabled={isSavingPost}
+                                            className="p-4 bg-white border border-gray-200 rounded-xl flex flex-col items-center justify-center hover:border-indigo-600 hover:text-indigo-600 transition-all group disabled:opacity-60"
+                                        >
                                             <Calendar className="h-6 w-6 mb-2 group-hover:scale-110 transition-transform text-indigo-600" />
                                             <span className="text-xs font-bold">Schedule</span>
                                         </button>
-                                        <button className="p-4 bg-white border border-gray-200 rounded-xl flex flex-col items-center justify-center hover:border-green-600 hover:text-green-600 transition-all group">
+                                        <button
+                                            onClick={handleSaveDraft}
+                                            disabled={isSavingPost}
+                                            className="p-4 bg-white border border-gray-200 rounded-xl flex flex-col items-center justify-center hover:border-green-600 hover:text-green-600 transition-all group disabled:opacity-60"
+                                        >
                                             <CheckCircle2 className="h-6 w-6 mb-2 group-hover:scale-110 transition-transform text-green-600" />
                                             <span className="text-xs font-bold">Save Draft</span>
                                         </button>

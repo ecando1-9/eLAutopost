@@ -1,176 +1,243 @@
 'use client';
 
-import { useState } from 'react';
-import { motion } from 'framer-motion';
-import { Calendar as CalendarIcon, Zap, CheckCircle2, ChevronRight, Loader2, PlayCircle, Plus } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import {
+    CalendarDays,
+    ArrowLeft,
+    Loader2,
+    CheckCircle2,
+    Clock3,
+    Plus,
+    AlertCircle,
+    Send,
+} from 'lucide-react';
+
+interface QueuePost {
+    id: string;
+    topic: string;
+    hook: string;
+    caption: string;
+    status: 'draft' | 'scheduled' | 'posted' | 'failed';
+    scheduled_at?: string;
+    posted_at?: string;
+    target?: 'person' | 'organization';
+    organization_id?: string;
+}
+
+function toDateKey(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+function formatDayLabel(date: Date): string {
+    return date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+function parseDateKeyToLocal(dateKey: string): Date {
+    const [year, month, day] = dateKey.split('-').map((value) => parseInt(value, 10));
+    return new Date(year, month - 1, day);
+}
 
 export default function ContentCalendarPage() {
     const router = useRouter();
-    const [loading, setLoading] = useState(false);
-    const [calendarGenerated, setCalendarGenerated] = useState(false);
-    
-    // Mock Data for the 30-day plan
-    const generateMockCalendar = () => {
-        const categories = ['Authority', 'Story', 'Framework', 'Discussion', 'SaaS Tip'];
-        const topics = [
-            'Biggest misconception about AI',
-            'How I learned to code faster',
-            '3-step framework for founders',
-            'Is remote work dead? Thoughts?',
-            'Why 90% of SaaS fail in year 1',
-            'The power of anti-gravity tools',
-            'My biggest failure and the lesson',
-            'Stop using ChatGPT like a search engine',
-            'The future of LinkedIn growth',
-            'Unconventional advice for juniors'
-        ];
-        
-        return Array.from({ length: 30 }).map((_, i) => ({
-            day: i + 1,
-            category: categories[Math.floor(Math.random() * categories.length)],
-            topic: topics[Math.floor(Math.random() * topics.length)],
-            format: Math.random() > 0.5 ? 'Carousel' : 'Text Post',
-            status: i === 0 ? 'Ready' : 'Draft'
-        }));
-    };
+    const supabase = createClientComponentClient();
 
-    const [calendar, setCalendar] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [posts, setPosts] = useState<QueuePost[]>([]);
+    const [selectedDay, setSelectedDay] = useState<string>(toDateKey(new Date()));
 
-    const handleGenerate = () => {
-        setLoading(true);
-        // Simulate API call to strategy engine
-        setTimeout(() => {
-            setCalendar(generateMockCalendar());
-            setCalendarGenerated(true);
-            setLoading(false);
-        }, 2000);
-    };
+    useEffect(() => {
+        const loadQueue = async () => {
+            setLoading(true);
+            try {
+                const { data } = await supabase.auth.getSession();
+                const token = data.session?.access_token;
+                const response = await fetch('/api/v1/user/queue', {
+                    headers: { Authorization: `Bearer ${token}` },
+                    cache: 'no-store',
+                });
 
-    const handleGeneratePost = (topic: string, goal: string) => {
-        // Route to the wizard with pre-filled parameters via query string
-        router.push(`/content/create?topic=${encodeURIComponent(topic)}&goal=${encodeURIComponent(goal)}`);
-    };
+                if (!response.ok) {
+                    throw new Error('Failed to load queue');
+                }
+
+                const payload = await response.json();
+                setPosts(payload.posts || []);
+            } catch (error) {
+                console.error('Failed to load calendar queue:', error);
+                setPosts([]);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        loadQueue();
+    }, []);
+
+    const upcomingDays = useMemo(() => {
+        return Array.from({ length: 14 }).map((_, index) => {
+            const date = new Date();
+            date.setDate(date.getDate() + index);
+            return date;
+        });
+    }, []);
+
+    const scheduledPosts = useMemo(() => {
+        return posts
+            .filter((post) => post.status === 'scheduled' && post.scheduled_at)
+            .sort((a, b) => {
+                const aTime = new Date(a.scheduled_at || '').getTime();
+                const bTime = new Date(b.scheduled_at || '').getTime();
+                return aTime - bTime;
+            });
+    }, [posts]);
+
+    const selectedDayPosts = useMemo(() => {
+        return scheduledPosts.filter((post) => {
+            if (!post.scheduled_at) return false;
+            return toDateKey(new Date(post.scheduled_at)) === selectedDay;
+        });
+    }, [scheduledPosts, selectedDay]);
+
+    const draftCount = posts.filter((post) => post.status === 'draft').length;
 
     return (
-        <div className="min-h-screen bg-gray-50 flex flex-col">
-            {/* Header */}
-            <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                        <div className="h-10 w-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
-                            <CalendarIcon className="h-5 w-5 text-white" />
-                        </div>
+        <div className="min-h-screen bg-slate-50">
+            <header className="bg-white border-b border-slate-200 sticky top-0 z-30">
+                <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={() => router.push('/dashboard')}
+                            className="p-2 rounded-lg hover:bg-slate-100"
+                        >
+                            <ArrowLeft className="h-5 w-5 text-slate-600" />
+                        </button>
                         <div>
-                            <h1 className="text-xl font-bold text-gray-900">AI Content Calendar</h1>
-                            <p className="text-sm text-gray-500">Your 30-Day LinkedIn Strategy</p>
+                            <h1 className="text-xl font-bold text-slate-900">Posting Calendar</h1>
+                            <p className="text-sm text-slate-500">See what needs posting on each day.</p>
                         </div>
                     </div>
+                    <button
+                        onClick={() => router.push(`/content/create?scheduleDate=${selectedDay}`)}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800"
+                    >
+                        <Plus className="h-4 w-4" />
+                        Generate for Selected Day
+                    </button>
                 </div>
             </header>
 
-            <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
-                {!calendarGenerated ? (
-                    <motion.div 
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="max-w-2xl mx-auto mt-12 bg-white rounded-3xl p-10 border border-gray-200 shadow-xl text-center"
-                    >
-                        <div className="mx-auto w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center mb-6">
-                            <Zap className="h-10 w-10 text-indigo-600" />
-                        </div>
-                        <h2 className="text-3xl font-bold text-gray-900 mb-4">Never run out of ideas again.</h2>
-                        <p className="text-gray-600 mb-8 text-lg">
-                            Click below to generate a hyper-personalized 30-day LinkedIn content plan designed for growth, engagement, and authority building.
-                        </p>
-                        
-                        <div className="bg-gray-50 rounded-2xl p-6 text-left mb-8 border border-gray-100">
-                            <h3 className="font-semibold text-gray-900 mb-3 text-sm uppercase tracking-wide">The strategy includes:</h3>
-                            <ul className="space-y-3">
-                                {['Mondays: Authority building', 'Wednesdays: Deep-dive Carousels', 'Fridays: Personal storytelling'].map((item, i) => (
-                                    <li key={i} className="flex items-center text-gray-600 text-sm">
-                                        <CheckCircle2 className="h-5 w-5 text-indigo-500 mr-3" />
-                                        {item}
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
-
-                        <button 
-                            onClick={handleGenerate}
-                            disabled={loading}
-                            className="w-full py-4 text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl font-bold text-lg shadow-lg shadow-indigo-200 transition-all flex items-center justify-center disabled:opacity-50"
-                        >
-                            {loading ? (
-                                <>
-                                    <Loader2 className="animate-spin h-6 w-6 mr-2" />
-                                    Analyzing niche & generating plan...
-                                </>
-                            ) : (
-                                <>
-                                    <PlayCircle className="h-6 w-6 mr-2" />
-                                    Generate 30-Day Calendar
-                                </>
-                            )}
-                        </button>
-                    </motion.div>
+            <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                {loading ? (
+                    <div className="flex items-center justify-center py-16">
+                        <Loader2 className="h-8 w-8 animate-spin text-slate-700" />
+                    </div>
                 ) : (
-                    <motion.div 
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        className="space-y-6"
-                    >
-                        <div className="flex items-center justify-between">
-                            <h2 className="text-2xl font-bold text-gray-900">Your Strategic Content Plan</h2>
-                            <div className="bg-green-50 text-green-700 px-4 py-2 rounded-full text-sm font-semibold border border-green-200 flex items-center">
-                                <CheckCircle2 className="h-4 w-4 mr-2" /> Plan Active
+                    <>
+                        <div className="grid sm:grid-cols-3 gap-4 mb-6">
+                            <div className="rounded-xl border border-slate-200 bg-white p-4">
+                                <p className="text-xs uppercase tracking-wide text-slate-500">Scheduled</p>
+                                <p className="text-2xl font-bold text-slate-900 mt-1">{scheduledPosts.length}</p>
+                            </div>
+                            <div className="rounded-xl border border-slate-200 bg-white p-4">
+                                <p className="text-xs uppercase tracking-wide text-slate-500">Draft Queue</p>
+                                <p className="text-2xl font-bold text-slate-900 mt-1">{draftCount}</p>
+                            </div>
+                            <div className="rounded-xl border border-slate-200 bg-white p-4">
+                                <p className="text-xs uppercase tracking-wide text-slate-500">Selected Day</p>
+                                <p className="text-2xl font-bold text-slate-900 mt-1">{selectedDayPosts.length}</p>
                             </div>
                         </div>
 
-                        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                            {calendar.map((item, i) => (
-                                <motion.div 
-                                    key={i}
-                                    initial={{ opacity: 0, y: 10 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    transition={{ delay: i * 0.05 }}
-                                    className="bg-white rounded-2xl p-6 border border-gray-200 hover:border-indigo-300 hover:shadow-lg transition-all group"
-                                >
-                                    <div className="flex justify-between items-start mb-4">
-                                        <div className="bg-gray-100 text-gray-600 px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider">
-                                            Day {item.day}
-                                        </div>
-                                        <div className={`px-2 py-1 rounded text-xs font-semibold ${
-                                            item.category === 'Authority' ? 'bg-blue-50 text-blue-700' :
-                                            item.category === 'Story' ? 'bg-purple-50 text-purple-700' :
-                                            item.category === 'Discussion' ? 'bg-orange-50 text-orange-700' :
-                                            'bg-indigo-50 text-indigo-700'
-                                        }`}>
-                                            {item.category}
-                                        </div>
-                                    </div>
-                                    
-                                    <h3 className="font-bold text-gray-900 text-lg mb-2 leading-tight">
-                                        {item.topic}
-                                    </h3>
-                                    
-                                    <p className="text-sm text-gray-500 mb-6 flex items-center">
-                                        <span className="w-2 h-2 rounded-full bg-gray-300 mr-2"></span>
-                                        Format: <span className="font-semibold ml-1">{item.format}</span>
-                                    </p>
-                                    
-                                    <button 
-                                        onClick={() => handleGeneratePost(item.topic, item.category)}
-                                        className="w-full py-2.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-600 hover:text-white rounded-xl text-sm font-bold transition-colors flex items-center justify-center group-hover:shadow-md"
-                                    >
-                                        <Zap className="h-4 w-4 mr-2" />
-                                        Generate with AI
-                                        <ChevronRight className="h-4 w-4 ml-1 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                    </button>
-                                </motion.div>
-                            ))}
+                        <div className="rounded-2xl border border-slate-200 bg-white p-5 mb-6">
+                            <div className="flex items-center gap-2 mb-4 text-slate-700">
+                                <CalendarDays className="h-4 w-4" />
+                                <span className="text-sm font-semibold">Choose a day</span>
+                            </div>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+                                {upcomingDays.map((day) => {
+                                    const key = toDateKey(day);
+                                    const count = scheduledPosts.filter((post) => post.scheduled_at && toDateKey(new Date(post.scheduled_at)) === key).length;
+                                    const selected = key === selectedDay;
+                                    return (
+                                        <button
+                                            key={key}
+                                            onClick={() => setSelectedDay(key)}
+                                            className={`rounded-xl border px-3 py-2 text-left transition-colors ${
+                                                selected
+                                                    ? 'border-slate-900 bg-slate-900 text-white'
+                                                    : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                                            }`}
+                                        >
+                                            <p className="text-xs font-semibold">{formatDayLabel(day)}</p>
+                                            <p className={`text-xs mt-1 ${selected ? 'text-slate-200' : 'text-slate-500'}`}>
+                                                {count} scheduled
+                                            </p>
+                                        </button>
+                                    );
+                                })}
+                            </div>
                         </div>
-                    </motion.div>
+
+                        <div className="rounded-2xl border border-slate-200 bg-white p-6">
+                            <div className="flex items-center justify-between mb-4">
+                                <h2 className="text-lg font-bold text-slate-900">
+                                    Tasks for {parseDateKeyToLocal(selectedDay).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}
+                                </h2>
+                                <button
+                                    onClick={() => router.push(`/content/create?scheduleDate=${selectedDay}`)}
+                                    className="text-sm font-semibold text-slate-700 hover:text-slate-900"
+                                >
+                                    + Add Post
+                                </button>
+                            </div>
+
+                            {selectedDayPosts.length === 0 ? (
+                                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-amber-800 text-sm flex items-start gap-2">
+                                    <AlertCircle className="h-4 w-4 mt-0.5" />
+                                    No scheduled post for this day. Generate content now and schedule it.
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    {selectedDayPosts.map((post) => (
+                                        <div key={post.id} className="rounded-xl border border-slate-200 p-4">
+                                            <div className="flex items-start justify-between gap-4">
+                                                <div>
+                                                    <p className="font-semibold text-slate-900">{post.topic}</p>
+                                                    <p className="text-sm text-slate-600 mt-1 line-clamp-2">{post.hook}</p>
+                                                    <div className="mt-2 flex items-center gap-3 text-xs text-slate-500">
+                                                        <span className="inline-flex items-center gap-1">
+                                                            <Clock3 className="h-3.5 w-3.5" />
+                                                            {post.scheduled_at
+                                                                ? new Date(post.scheduled_at).toLocaleTimeString(undefined, {
+                                                                      hour: '2-digit',
+                                                                      minute: '2-digit',
+                                                                  })
+                                                                : 'Time not set'}
+                                                        </span>
+                                                        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5">
+                                                            Target: {post.target === 'organization' ? 'Page' : 'Profile'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    onClick={() => router.push('/posts')}
+                                                    className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200"
+                                                >
+                                                    <Send className="h-3.5 w-3.5" />
+                                                    Open Queue
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </>
                 )}
             </main>
         </div>

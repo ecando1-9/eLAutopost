@@ -4,7 +4,7 @@ export interface AdminUser {
     id: string;
     email: string;
     full_name: string;
-    role: 'admin';
+    role: 'admin' | 'user';
 }
 
 export interface DashboardStats {
@@ -61,9 +61,14 @@ export const adminService = {
     },
 
     // Users
-    getUsers: async (params?: { skip?: number; limit?: number; search?: string; status?: string }) => {
-        const { data } = await api.get<User[]>('/admin/users', { params });
-        return data;
+    getUsers: async (params?: { search?: string; status?: string; page?: number; page_size?: number }) => {
+        const { data } = await api.post('/admin/users/search', {
+            search: params?.search || null,
+            status: params?.status || null,
+            page: params?.page || 1,
+            page_size: params?.page_size || 50,
+        });
+        return data?.users || [];
     },
 
     getUser: async (id: string) => {
@@ -72,34 +77,59 @@ export const adminService = {
     },
 
     blockUser: async (id: string, reason?: string) => {
-        const { data } = await api.post(`/admin/users/${id}/block`, { reason });
+        const { data } = await api.post('/admin/users/block', { user_id: id, reason });
         return data;
     },
 
     unblockUser: async (id: string) => {
-        const { data } = await api.post(`/admin/users/${id}/unblock`);
+        const { data } = await api.post('/admin/users/unblock', { user_id: id });
         return data;
     },
 
     // Subscriptions
-    getSubscriptions: async (params?: { skip?: number; limit?: number; status?: string }) => {
-        const { data } = await api.get('/admin/subscriptions', { params });
-        return data;
+    getSubscriptions: async (params?: { status?: string; page?: number; page_size?: number }) => {
+        // UI expects user+subscription combined rows, so use users search view.
+        const { data } = await api.post('/admin/users/search', {
+            search: null,
+            status: params?.status && params.status !== 'all' ? params.status : null,
+            page: params?.page || 1,
+            page_size: params?.page_size || 100,
+        });
+        return data?.users || [];
     },
 
     extendTrial: async (userId: string, days: number) => {
-        const { data } = await api.post(`/admin/subscriptions/${userId}/extend-trial`, { days });
+        const { data } = await api.post('/admin/subscriptions/extend-trial', {
+            user_id: userId,
+            days,
+        });
         return data;
     },
 
     cancelSubscription: async (userId: string, logic: 'immediate' | 'end_of_period' = 'end_of_period') => {
-        const { data } = await api.post(`/admin/subscriptions/${userId}/cancel`, { cancel_logic: logic });
+        const { data } = await api.post('/admin/subscriptions/cancel', {
+            user_id: userId,
+        });
+        return data;
+    },
+
+    activateSubscription: async (userId: string) => {
+        const { data } = await api.post('/admin/subscriptions/activate', {
+            user_id: userId,
+        });
         return data;
     },
 
     // Audit Logs
-    getAuditLogs: async (params?: { skip?: number; limit?: number; action?: string; admin_id?: string }) => {
-        const { data } = await api.get('/admin/audit-logs', { params });
+    getAuditLogs: async (params?: { page?: number; page_size?: number; action?: string; admin_id?: string }) => {
+        const { data } = await api.get('/admin/audit-logs', {
+            params: {
+                page: params?.page || 1,
+                page_size: params?.page_size || 50,
+                action_filter: params?.action || undefined,
+                admin_filter: params?.admin_id || undefined,
+            },
+        });
         return data;
     },
 };

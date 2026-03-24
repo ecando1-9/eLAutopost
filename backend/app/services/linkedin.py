@@ -18,6 +18,7 @@ from typing import Dict, Any, Optional
 import httpx
 import os
 from datetime import timedelta
+from urllib.parse import urlencode
 from ..core.config import settings, logger
 from ..core.datetime_utils import utc_now, parse_datetime_utc
 from ..services.database import supabase_client
@@ -35,9 +36,10 @@ class LinkedInService:
     AUTH_URL = "https://www.linkedin.com/oauth/v2/authorization"
     TOKEN_URL = "https://www.linkedin.com/oauth/v2/accessToken"
     API_BASE = "https://api.linkedin.com/v2"
+    USERINFO_URL = "https://api.linkedin.com/v2/userinfo"
     
     # Required OAuth modern scopes
-    SCOPES = [
+    BASE_SCOPES = [
         "openid",
         "profile",
         "email",
@@ -49,6 +51,12 @@ class LinkedInService:
         self.client_id = settings.LINKEDIN_CLIENT_ID
         self.client_secret = settings.LINKEDIN_CLIENT_SECRET
         self.redirect_uri = settings.LINKEDIN_REDIRECT_URI
+        self.default_target = settings.LINKEDIN_DEFAULT_TARGET
+        self.organization_id = settings.LINKEDIN_ORGANIZATION_ID
+        self.scopes = list(self.BASE_SCOPES)
+        if self.organization_id or self.default_target == "organization":
+            # Needed for Company Page posting.
+            self.scopes.append("w_organization_social")
     
     def get_authorization_url(self, state: str) -> str:
         """
@@ -60,7 +68,7 @@ class LinkedInService:
         Returns:
             Authorization URL to redirect user to
         """
-        scope = " ".join(self.SCOPES)
+        scope = " ".join(self.scopes)
         
         params = {
             "response_type": "code",
@@ -70,8 +78,8 @@ class LinkedInService:
             "scope": scope
         }
         
-        # Build URL
-        query_string = "&".join([f"{k}={v}" for k, v in params.items()])
+        # Build encoded URL.
+        query_string = urlencode(params)
         url = f"{self.AUTH_URL}?{query_string}"
         
         return url
@@ -135,7 +143,7 @@ class LinkedInService:
                 "access_token": token_data["access_token"],
                 "refresh_token": token_data.get("refresh_token"),
                 "expires_at": expires_at.isoformat(),
-                "scope": " ".join(self.SCOPES)
+                "scope": " ".join(self.scopes)
             }
             
             # Use upsert on unique user_id to avoid insert/update race conditions.
@@ -205,18 +213,132 @@ class LinkedInService:
                     f"{self.API_BASE}/me",
                     headers={"Authorization": f"Bearer {access_token}"}
                 )
-                
-                response.raise_for_status()
-                return response.json()
-                
+
+                if response.is_success:
+                    return self._safe_json(response)
+
+                # Fallback to OIDC userinfo endpoint (provides `sub`).
+                fallback = await client.get(
+                    self.USERINFO_URL,
+                    headers={"Authorization": f"Bearer {access_token}"}
+                )
+                fallback.raise_for_status()
+                return self._safe_json(fallback)
+
         except Exception as e:
             logger.error(f"Failed to get user profile: {e}")
             raise
+
+    @staticmethod
+    def _safe_json(response: httpx.Response) -> Dict[str, Any]:
+        """Parse JSON response safely."""
+        try:
+            payload = response.json()
+            return payload if isinstance(payload, dict) else {}
+        except Exception:
+            return {}
+
+    @staticmethod
+    def _attach_post_id(
+        response: httpx.Response,
+        payload: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Ensure post ID is present even when LinkedIn returns it in headers only.
+        """
+        if payload.get("id"):
+            return payload
+
+        restli_id = response.headers.get("x-restli-id")
+        if restli_id:
+            payload["id"] = restli_id
+
+        return payload
+
+    @staticmethod
+    def _build_post_url(linkedin_post_id: str) -> str:
+        """Build a public LinkedIn post URL from API ID/URN."""
+        clean_id = (linkedin_post_id or "").strip()
+        if not clean_id:
+            return ""
+
+        if clean_id.startswith("urn:li:"):
+            clean_id = clean_id.split(":")[-1]
+
+        return f"https://www.linkedin.com/feed/update/{clean_id}"
+
+    async def _get_person_urn(self, access_token: str) -> str:
+        """Resolve authenticated member URN."""
+        profile = await self.get_user_profile(access_token)
+        linkedin_id = profile.get("sub") or profile.get("id")
+        if not linkedin_id:
+            raise Exception("Unable to resolve LinkedIn member ID from token")
+        return f"urn:li:person:{linkedin_id}"
+
+    async def _get_author_urn(
+        self,
+        access_token: str,
+        target: Optional[str] = None,
+        organization_id: Optional[str] = None
+    ) -> str:
+        """
+        Resolve author URN for person/profile or organization/page.
+
+        target: person | organization | None (uses default)
+        """
+        selected_target = (target or self.default_target or "person").strip().lower()
+        if selected_target == "organization":
+            org_id = (organization_id or self.organization_id or "").strip()
+            if not org_id:
+                raise Exception(
+                    "Organization posting selected but LINKEDIN_ORGANIZATION_ID is not configured"
+                )
+            return f"urn:li:organization:{org_id}"
+
+        return await self._get_person_urn(access_token)
+
+    async def create_post(
+        self,
+        user_id: str,
+        text: str,
+        image_url: Optional[str] = None,
+        target: Optional[str] = None,
+        organization_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Unified post helper used by workers.
+        Returns a normalized result shape.
+        """
+        if image_url:
+            linkedin_response = await self.post_with_image(
+                user_id=user_id,
+                text=text,
+                image_url=image_url,
+                target=target,
+                organization_id=organization_id
+            )
+        else:
+            linkedin_response = await self.post_text(
+                user_id=user_id,
+                text=text,
+                target=target,
+                organization_id=organization_id
+            )
+
+        post_id = linkedin_response.get("id", "")
+        return {
+            "success": True,
+            "post_id": post_id,
+            "post_url": self._build_post_url(post_id),
+            "raw": linkedin_response
+        }
     
     async def post_text(
         self,
         user_id: str,
-        text: str
+        text: str,
+        target: Optional[str] = None,
+        organization_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Post text-only content to LinkedIn.
@@ -233,13 +355,15 @@ class LinkedInService:
             raise Exception("LinkedIn not connected. Please connect your account.")
         
         try:
-            # Get user's LinkedIn ID
-            profile = await self.get_user_profile(access_token)
-            linkedin_id = profile["id"]
+            author_urn = await self._get_author_urn(
+                access_token=access_token,
+                target=target,
+                organization_id=organization_id
+            )
             
             # Create post payload
             payload = {
-                "author": f"urn:li:person:{linkedin_id}",
+                "author": author_urn,
                 "lifecycleState": "PUBLISHED",
                 "specificContent": {
                     "com.linkedin.ugc.ShareContent": {
@@ -267,7 +391,7 @@ class LinkedInService:
                 )
                 
                 response.raise_for_status()
-                result = response.json()
+                result = self._attach_post_id(response, self._safe_json(response))
                 
                 logger.info(f"Successfully posted to LinkedIn for user {user_id}")
                 return result
@@ -281,7 +405,9 @@ class LinkedInService:
         user_id: str,
         text: str,
         pdf_path: str,
-        title: str = "My Carousel"
+        title: str = "My Carousel",
+        target: Optional[str] = None,
+        organization_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Post a PDF Carousel (document) to LinkedIn.
@@ -300,15 +426,17 @@ class LinkedInService:
             raise Exception("LinkedIn not connected. Please connect your account.")
         
         try:
-            # Get user's LinkedIn ID - handling both legacy 'id' and modern 'sub'
-            profile = await self.get_user_profile(access_token)
-            linkedin_id = profile.get("sub") or profile.get("id")
+            author_urn = await self._get_author_urn(
+                access_token=access_token,
+                target=target,
+                organization_id=organization_id
+            )
             
             # Step 1: Register upload for DOCUMENT
             register_payload = {
                 "registerUploadRequest": {
                     "recipes": ["urn:li:digitalmediaRecipe:feedshare-document"],
-                    "owner": f"urn:li:person:{linkedin_id}",
+                    "owner": author_urn,
                     "serviceRelationships": [
                         {
                             "relationshipType": "OWNER",
@@ -356,7 +484,7 @@ class LinkedInService:
                 
                 # Step 4: Create UGC Post with Document
                 post_payload = {
-                    "author": f"urn:li:person:{linkedin_id}",
+                    "author": author_urn,
                     "lifecycleState": "PUBLISHED",
                     "specificContent": {
                         "com.linkedin.ugc.ShareContent": {
@@ -394,7 +522,10 @@ class LinkedInService:
                 )
                 
                 post_response.raise_for_status()
-                result = post_response.json()
+                result = self._attach_post_id(
+                    post_response,
+                    self._safe_json(post_response)
+                )
                 
                 logger.info(f"Successfully posted PDF Carousel to LinkedIn for user {user_id}")
                 return result
@@ -407,7 +538,9 @@ class LinkedInService:
         self,
         user_id: str,
         text: str,
-        image_url: str
+        image_url: str,
+        target: Optional[str] = None,
+        organization_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Post text with image to LinkedIn.
@@ -417,13 +550,16 @@ class LinkedInService:
             raise Exception("LinkedIn not connected. Please connect your account.")
         
         try:
-            profile = await self.get_user_profile(access_token)
-            linkedin_id = profile.get("sub") or profile.get("id")
+            author_urn = await self._get_author_urn(
+                access_token=access_token,
+                target=target,
+                organization_id=organization_id
+            )
             
             register_payload = {
                 "registerUploadRequest": {
                     "recipes": ["urn:li:digitalmediaRecipe:feedshare-image"],
-                    "owner": f"urn:li:person:{linkedin_id}",
+                    "owner": author_urn,
                     "serviceRelationships": [
                         {
                             "relationshipType": "OWNER",
@@ -462,7 +598,7 @@ class LinkedInService:
                 upload_response.raise_for_status()
                 
                 post_payload = {
-                    "author": f"urn:li:person:{linkedin_id}",
+                    "author": author_urn,
                     "lifecycleState": "PUBLISHED",
                     "specificContent": {
                         "com.linkedin.ugc.ShareContent": {
@@ -493,7 +629,10 @@ class LinkedInService:
                     }
                 )
                 post_response.raise_for_status()
-                return post_response.json()
+                return self._attach_post_id(
+                    post_response,
+                    self._safe_json(post_response)
+                )
                 
         except Exception as e:
             logger.error(f"Failed to post with image: {e}")

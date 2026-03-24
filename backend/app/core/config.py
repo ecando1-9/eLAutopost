@@ -78,6 +78,12 @@ class Settings(BaseSettings):
     LINKEDIN_CLIENT_ID: str = Field(..., env="LINKEDIN_CLIENT_ID")
     LINKEDIN_CLIENT_SECRET: str = Field(..., env="LINKEDIN_CLIENT_SECRET")
     LINKEDIN_REDIRECT_URI: str = Field(..., env="LINKEDIN_REDIRECT_URI")
+    LINKEDIN_ORGANIZATION_ID: Optional[str] = Field(
+        default=None, env="LINKEDIN_ORGANIZATION_ID"
+    )
+    LINKEDIN_DEFAULT_TARGET: str = Field(
+        default="person", env="LINKEDIN_DEFAULT_TARGET"
+    )
     
     # =============================================================================
     # GOOGLE OAUTH CONFIGURATION
@@ -152,6 +158,16 @@ class Settings(BaseSettings):
             # Don't raise error, just return None or allow it if user ignores warning
             return v
         return v
+
+    @validator("LINKEDIN_DEFAULT_TARGET")
+    def validate_linkedin_default_target(cls, v):
+        """Validate LinkedIn post target mode."""
+        normalized = (v or "person").strip().lower()
+        if normalized not in {"person", "organization"}:
+            raise ValueError(
+                "LINKEDIN_DEFAULT_TARGET must be either 'person' or 'organization'"
+            )
+        return normalized
     
     class Config:
         """Pydantic configuration."""

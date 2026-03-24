@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 
-const RAW_BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const RAW_BACKEND_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').trim();
 const BACKEND_URL = RAW_BACKEND_URL.endsWith('/api/v1')
     ? RAW_BACKEND_URL
     : `${RAW_BACKEND_URL.replace(/\/$/, '')}/api/v1`;

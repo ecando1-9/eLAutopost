@@ -168,6 +168,8 @@ CREATE TABLE IF NOT EXISTS posts (
     linkedin_post_id VARCHAR(255),
     linkedin_url TEXT,
     error_message TEXT,
+    target VARCHAR(20) DEFAULT 'person' CHECK (target IN ('person', 'organization')),
+    organization_id VARCHAR(64),
     scheduled_at TIMESTAMP WITH TIME ZONE,
     retry_count INTEGER DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -183,6 +185,12 @@ BEGIN
     END IF;
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'posts' AND column_name = 'retry_count') THEN
         ALTER TABLE posts ADD COLUMN retry_count INTEGER DEFAULT 0;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'posts' AND column_name = 'target') THEN
+        ALTER TABLE posts ADD COLUMN target VARCHAR(20) DEFAULT 'person' CHECK (target IN ('person', 'organization'));
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'posts' AND column_name = 'organization_id') THEN
+        ALTER TABLE posts ADD COLUMN organization_id VARCHAR(64);
     END IF;
 END $$;
 

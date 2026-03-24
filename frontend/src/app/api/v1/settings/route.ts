@@ -16,30 +16,25 @@ export async function GET(_request: Request) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const response = await fetch(`${BACKEND_URL}/user/schedule`, {
+        const response = await fetch(`${BACKEND_URL}/settings?user_id=${session.user.id}`, {
             headers: {
-                'Authorization': `Bearer ${session.access_token}`,
+                Authorization: `Bearer ${session.access_token}`,
             },
             cache: 'no-store',
         });
 
-        if (!response.ok) {
-            const errorText = await response.text();
-            return NextResponse.json(
-                { error: 'Failed to fetch schedule', details: errorText },
-                { status: response.status }
-            );
-        }
-
-        const data = await response.json();
-        return NextResponse.json(data);
+        const text = await response.text();
+        return new NextResponse(text, {
+            status: response.status,
+            headers: { 'Content-Type': response.headers.get('content-type') || 'application/json' },
+        });
     } catch (error: any) {
-        console.error('Error loading schedule:', error);
+        console.error('Error fetching settings:', error);
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 }
 
-export async function POST(request: Request) {
+export async function PATCH(request: Request) {
     try {
         const supabase = createRouteHandlerClient({ cookies });
         const { data: { session } } = await supabase.auth.getSession();
@@ -49,28 +44,22 @@ export async function POST(request: Request) {
         }
 
         const body = await request.json();
-
-        const response = await fetch(`${BACKEND_URL}/user/schedule`, {
-            method: 'POST',
+        const response = await fetch(`${BACKEND_URL}/settings?user_id=${session.user.id}`, {
+            method: 'PATCH',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${session.access_token}`,
+                Authorization: `Bearer ${session.access_token}`,
             },
             body: JSON.stringify(body),
         });
 
-        if (!response.ok) {
-            const errorText = await response.text();
-            return NextResponse.json(
-                { error: 'Failed to update schedule', details: errorText },
-                { status: response.status }
-            );
-        }
-
-        const data = await response.json();
-        return NextResponse.json(data);
+        const text = await response.text();
+        return new NextResponse(text, {
+            status: response.status,
+            headers: { 'Content-Type': response.headers.get('content-type') || 'application/json' },
+        });
     } catch (error: any) {
-        console.error('Error updating schedule:', error);
+        console.error('Error updating settings:', error);
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 }

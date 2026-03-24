@@ -32,6 +32,7 @@ class ContentType(str, Enum):
 class PostStatus(str, Enum):
     """Status of a LinkedIn post."""
     DRAFT = "draft"
+    SCHEDULED = "scheduled"
     PENDING = "pending"
     POSTED = "posted"
     FAILED = "failed"
@@ -167,6 +168,7 @@ class GeneratedContent(BaseModel):
     """Response model for generated content including strategy insights."""
     hook: str = Field(..., description="Main viral hook")
     caption: str = Field(..., description="LinkedIn caption")
+    image_prompt: Optional[str] = Field(default=None, description="Optional image prompt")
     slides: List[str] = Field(..., min_items=6, max_items=10, description="Content for carousel slides")
     cta: str = Field(..., description="Call to action question")
     hashtags: List[str] = Field(default=[], description="Suggested hashtags")
@@ -227,11 +229,26 @@ class PostCreate(BaseModel):
     caption: str = Field(..., max_length=3000)
     content_type: ContentType
     image_url: Optional[str] = None
+    target: Optional[Literal["person", "organization"]] = Field(
+        default="person",
+        description="LinkedIn publish target"
+    )
+    organization_id: Optional[str] = Field(
+        default=None,
+        max_length=64,
+        description="LinkedIn organization/page ID for page posting"
+    )
     
     @validator("topic", "hook", "image_prompt", "caption")
     def sanitize_fields(cls, v):
         """Sanitize all text fields."""
         return sanitize_input(v)
+
+    @validator("organization_id")
+    def sanitize_organization_id(cls, v):
+        if v is None:
+            return v
+        return sanitize_input(v, max_length=64).strip()
 
 
 class PostUpdate(BaseModel):
@@ -240,6 +257,8 @@ class PostUpdate(BaseModel):
     caption: Optional[str] = Field(None, max_length=3000)
     image_url: Optional[str] = None
     status: Optional[PostStatus] = None
+    target: Optional[Literal["person", "organization"]] = None
+    organization_id: Optional[str] = Field(None, max_length=64)
     
     @validator("hook", "caption")
     def sanitize_fields(cls, v):
@@ -247,6 +266,12 @@ class PostUpdate(BaseModel):
         if v:
             return sanitize_input(v)
         return v
+
+    @validator("organization_id")
+    def sanitize_update_organization_id(cls, v):
+        if v is None:
+            return v
+        return sanitize_input(v, max_length=64).strip()
 
 
 class PostResponse(BaseModel):
@@ -259,6 +284,8 @@ class PostResponse(BaseModel):
     caption: str
     content_type: ContentType
     image_url: Optional[str]
+    target: Optional[str] = "person"
+    organization_id: Optional[str] = None
     status: PostStatus
     created_at: datetime
     updated_at: datetime
