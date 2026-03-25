@@ -9,12 +9,12 @@ import {
     Clock,
     Zap,
     Settings,
-    LogOut,
     Loader2,
     CheckCircle2,
     XCircle,
     AlertCircle
 } from 'lucide-react';
+import AppShell from '@/components/AppShell';
 
 interface DashboardData {
     linkedin_connected: boolean;
@@ -44,7 +44,6 @@ export default function UserDashboard() {
     const supabase = createClientComponentClient();
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState<DashboardData | null>(null);
-    const [user, setUser] = useState<any>(null);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
     useEffect(() => {
@@ -59,7 +58,6 @@ export default function UserDashboard() {
                 }
 
                 if (!mounted) return;
-                setUser(session.user);
                 await fetchDashboardData();
             } catch (error) {
                 console.error('Failed to initialize dashboard:', error);
@@ -115,11 +113,6 @@ export default function UserDashboard() {
         }
     };
 
-    const handleLogout = async () => {
-        await supabase.auth.signOut();
-        router.push('/');
-    };
-
     if (loading) {
         return (
             <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -133,44 +126,24 @@ export default function UserDashboard() {
     const hasAccess = isTrialActive || isSubscribed;
 
     return (
-        <div className="min-h-screen bg-gray-50">
-            {/* Header */}
-            <header className="bg-white border-b border-gray-200">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-                    <div className="flex justify-between items-center">
-                        <div className="flex items-center space-x-3">
-                            <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white">
-                                <Zap className="h-6 w-6" />
-                            </div>
-                            <div>
-                                <h1 className="text-xl font-bold text-gray-900">eLAutopost AI</h1>
-                                <p className="text-sm text-gray-500">{user?.email}</p>
-                                {data?.linkedin_connected ? (
-                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 border border-green-200 mt-1">
-                                        <CheckCircle2 className="h-3 w-3 mr-1" />
-                                        LinkedIn Connected
-                                    </span>
-                                ) : (
-                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800 border border-gray-200 mt-1">
-                                        <XCircle className="h-3 w-3 mr-1" />
-                                        LinkedIn Not Connected
-                                    </span>
-                                )}
-                            </div>
-                        </div>
-
-                        <button
-                            onClick={handleLogout}
-                            className="flex items-center space-x-2 px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                        >
-                            <LogOut className="h-4 w-4" />
-                            <span>Logout</span>
-                        </button>
-                    </div>
-                </div>
-            </header>
-
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <AppShell
+            title="Dashboard"
+            description="Monitor account health, posting output, and automation activity."
+            action={
+                data?.linkedin_connected ? (
+                    <span className="inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">
+                        <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />
+                        LinkedIn Connected
+                    </span>
+                ) : (
+                    <span className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700">
+                        <XCircle className="mr-1.5 h-3.5 w-3.5" />
+                        LinkedIn Not Connected
+                    </span>
+                )
+            }
+        >
+            <div className="space-y-8">
                 {/* Subscription Status Banner */}
                 {errorMessage && (
                     <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700">
@@ -341,6 +314,6 @@ export default function UserDashboard() {
                     </div>
                 )}
             </div>
-        </div>
+        </AppShell>
     );
 }

@@ -25,6 +25,7 @@ import {
     RefreshCw
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import AppShell from '@/components/AppShell';
 
 // Define Step Types
 type Step = 1 | 2 | 3 | 4 | 5;
@@ -527,37 +528,26 @@ function CreateContentPageContent() {
     };
 
     return (
-        <div className="min-h-screen bg-[#F8FAFC]">
-            {/* Nav */}
-            <header className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-gray-100">
-                <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
-                    <div className="flex items-center space-x-4">
-                        <button 
-                            onClick={() => router.push('/dashboard')}
-                            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-                        >
-                            <ArrowLeft className="h-5 w-5 text-gray-500" />
-                        </button>
-                        <h1 className="text-xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-                            eLAutopost AI
-                        </h1>
-                    </div>
-                    
-                    {/* Progress Dots */}
-                    <div className="flex space-x-2">
-                        {[1, 2, 3, 4, 5].map((s) => (
-                            <div 
-                                key={s} 
-                                className={`h-1.5 w-8 rounded-full transition-all duration-500 ${
-                                    currentStep >= s ? 'bg-indigo-600' : 'bg-gray-200'
-                                }`}
-                            />
-                        ))}
+        <AppShell title="Create Content" description="Generate strategy-first LinkedIn posts with templates." hidePageHeader>
+            <div className="max-w-5xl mx-auto px-0 py-4">
+                <div className="mb-8 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Creation Wizard</p>
+                            <h1 className="text-2xl font-extrabold text-slate-900">Build your next LinkedIn post</h1>
+                        </div>
+                        <div className="flex space-x-2">
+                            {[1, 2, 3, 4, 5].map((s) => (
+                                <div
+                                    key={s}
+                                    className={`h-1.5 w-8 rounded-full transition-all duration-500 ${
+                                        currentStep >= s ? 'bg-indigo-600' : 'bg-gray-200'
+                                    }`}
+                                />
+                            ))}
+                        </div>
                     </div>
                 </div>
-            </header>
-
-            <main className="max-w-5xl mx-auto px-6 py-12">
                 <AnimatePresence mode="wait">
                     {/* STEP 1: GOAL */}
                     {currentStep === 1 && (
@@ -924,7 +914,7 @@ function CreateContentPageContent() {
                         </motion.div>
                     )}
                 </AnimatePresence>
-            </main>
+            </div>
 
             {/* Custom scrollbar styles */}
             <style jsx global>{`
@@ -942,6 +932,6 @@ function CreateContentPageContent() {
                     background: #CBD5E1;
                 }
             `}</style>
-        </div>
+        </AppShell>
     );
 }

@@ -1,13 +1,21 @@
 import './globals.css'
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
+import { Manrope, Sora } from 'next/font/google'
 import CookieConsentBanner from '@/components/CookieConsentBanner';
 
-const inter = Inter({ subsets: ['latin'] })
+const manrope = Manrope({
+    subsets: ['latin'],
+    variable: '--font-sans',
+})
+
+const sora = Sora({
+    subsets: ['latin'],
+    variable: '--font-display',
+})
 
 export const metadata: Metadata = {
-    title: 'LinkedIn Content Automation',
-    description: 'AI-powered content generation for LinkedIn',
+    title: 'eLAutopost AI',
+    description: 'AI-powered LinkedIn content automation platform',
 }
 
 import { Toaster } from 'react-hot-toast'
@@ -19,7 +27,7 @@ export default function RootLayout({
 }) {
     return (
         <html lang="en">
-            <body className={inter.className}>
+            <body className={`${manrope.variable} ${sora.variable} font-sans`}>
                 <Toaster position="top-right" />
                 {children}
                 <CookieConsentBanner />

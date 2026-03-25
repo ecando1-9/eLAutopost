@@ -266,10 +266,10 @@ export default function LandingPage() {
                         <div>
                             <h3 className="text-sm font-bold text-white mb-6 uppercase tracking-wider">Legal</h3>
                             <ul className="space-y-4 text-sm text-slate-400 font-medium">
-                                <li><a href="#" className="hover:text-blue-400 transition-colors">Privacy Policy</a></li>
-                                <li><a href="#" className="hover:text-blue-400 transition-colors">Terms of Service</a></li>
-                                <li><a href="#" className="hover:text-blue-400 transition-colors">Cookie Policy</a></li>
-                                <li><a href="#" className="hover:text-blue-400 transition-colors">Contact</a></li>
+                                <li><Link href="/privacy" className="hover:text-blue-400 transition-colors">Privacy Policy</Link></li>
+                                <li><Link href="/privacy" className="hover:text-blue-400 transition-colors">Terms of Service</Link></li>
+                                <li><Link href="/cookies" className="hover:text-blue-400 transition-colors">Cookie Policy</Link></li>
+                                <li><Link href="/signup" className="hover:text-blue-400 transition-colors">Contact</Link></li>
                             </ul>
                         </div>
                     </div>

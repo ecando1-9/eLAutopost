@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import {
     AlertCircle,
-    ArrowLeft,
     Building2,
     Bot,
     CalendarDays,
@@ -22,6 +21,7 @@ import {
     UserCircle2,
     Zap
 } from 'lucide-react';
+import AppShell from '@/components/AppShell';
 
 type Day = 'MON' | 'TUE' | 'WED' | 'THU' | 'FRI' | 'SAT' | 'SUN';
 type ContentType = 'alert' | 'curiosity' | 'insight' | 'future';
@@ -481,16 +481,12 @@ export default function SettingsPage() {
     }
 
     return (
-        <div className="min-h-screen bg-[radial-gradient(circle_at_top_right,_#e0f2fe_0%,_#f8fafc_35%,_#f8fafc_100%)] pb-10">
-            <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                <button
-                    onClick={() => router.push('/dashboard')}
-                    className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-slate-700 hover:text-slate-900"
-                >
-                    <ArrowLeft className="h-4 w-4" />
-                    Back to Dashboard
-                </button>
-
+        <AppShell
+            title="Automation Settings"
+            description="Set LinkedIn targets, schedule rules, and AI defaults in one place."
+            hidePageHeader
+        >
+            <div className="max-w-5xl mx-auto">
                 <div className="mb-6 rounded-2xl border border-slate-200 bg-white/90 shadow-sm p-6 sm:p-8">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                         <div>
@@ -972,7 +968,7 @@ export default function SettingsPage() {
                     </button>
                 </div>
             </div>
-        </div>
+        </AppShell>
     );
 }
 

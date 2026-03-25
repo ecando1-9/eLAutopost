@@ -54,8 +54,8 @@ module.exports = {
                 }
             },
             fontFamily: {
-                sans: ['Inter', 'system-ui', 'sans-serif'],
-                display: ['Outfit', 'Inter', 'sans-serif'],
+                sans: ['var(--font-sans)', 'system-ui', 'sans-serif'],
+                display: ['var(--font-display)', 'var(--font-sans)', 'sans-serif'],
             },
             animation: {
                 'fade-in': 'fadeIn 0.5s ease-in-out',

@@ -9,12 +9,12 @@ import {
     CheckCircle2,
     XCircle,
     Loader2,
-    ArrowLeft,
     Filter,
     Trash2,
     Send
 } from 'lucide-react';
 import { format } from 'date-fns';
+import AppShell from '@/components/AppShell';
 
 interface Post {
     id: string;
@@ -144,33 +144,19 @@ export default function PostsPage() {
     };
 
     return (
-        <div className="min-h-screen bg-gray-50">
-            {/* Header */}
-            <div className="bg-white border-b border-gray-200">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-                    <button
-                        onClick={() => router.push('/dashboard')}
-                        className="flex items-center text-gray-600 hover:text-gray-900 mb-4"
-                    >
-                        <ArrowLeft className="h-4 w-4 mr-2" />
-                        Back to Dashboard
-                    </button>
-                    <div className="flex justify-between items-center">
-                        <div>
-                            <h1 className="text-3xl font-bold text-gray-900">Content Queue</h1>
-                            <p className="text-gray-500 mt-2">Manage your LinkedIn posts</p>
-                        </div>
-                        <button
-                            onClick={() => router.push('/content/create')}
-                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                        >
-                            Create New Post
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <AppShell
+            title="Content Queue"
+            description="Review, schedule, publish, and clean up generated posts."
+            action={
+                <button
+                    onClick={() => router.push('/content/create')}
+                    className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 transition-colors"
+                >
+                    Create New Post
+                </button>
+            }
+        >
+            <div>
                 {/* Filters */}
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6">
                     <div className="flex items-center gap-2">
@@ -321,6 +307,6 @@ export default function PostsPage() {
                     </div>
                 )}
             </div>
-        </div>
+        </AppShell>
     );
 }
