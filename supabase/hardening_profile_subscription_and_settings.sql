@@ -2,6 +2,7 @@
 -- 1) Ensure settings table stores all configurable defaults.
 -- 2) Backfill missing subscription start/end dates.
 -- 3) Normalize placeholder/blank full names.
+-- 4) Ensure posts scheduling columns/constraints are compatible with app logic.
 -- Safe to run multiple times.
 
 -- ---------------------------------------------------------------------------
@@ -47,6 +48,39 @@ $$;
 
 ALTER TABLE public.settings
     VALIDATE CONSTRAINT settings_publish_target_check;
+
+-- ---------------------------------------------------------------------------
+-- POSTS SCHEDULER COLUMN + CONSTRAINT HARDENING
+-- ---------------------------------------------------------------------------
+ALTER TABLE public.posts
+    ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMP WITH TIME ZONE,
+    ADD COLUMN IF NOT EXISTS retry_count INTEGER DEFAULT 0;
+
+-- Replace legacy status check to support both pending and scheduled states.
+ALTER TABLE public.posts
+    DROP CONSTRAINT IF EXISTS posts_status_check;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'posts_status_check'
+          AND conrelid = 'public.posts'::regclass
+    ) THEN
+        ALTER TABLE public.posts
+            ADD CONSTRAINT posts_status_check
+            CHECK (status IN ('draft', 'pending', 'scheduled', 'posted', 'failed')) NOT VALID;
+    END IF;
+END;
+$$;
+
+ALTER TABLE public.posts
+    VALIDATE CONSTRAINT posts_status_check;
+
+CREATE INDEX IF NOT EXISTS idx_posts_scheduled_at
+    ON public.posts (scheduled_at)
+    WHERE status = 'scheduled';
 
 -- ---------------------------------------------------------------------------
 -- USER NAME NORMALIZATION

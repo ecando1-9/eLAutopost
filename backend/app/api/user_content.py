@@ -216,20 +216,32 @@ async def get_user_dashboard(
     """
     try:
         from ..services.database import supabase_client
-        
-        # Get subscription info
-        sub_result = supabase_client.admin.table("subscriptions").select(
-            "*"
-        ).eq("user_id", user_id).limit(1).execute()
 
-        if sub_result.data:
-            subscription = sub_result.data[0]
-        else:
-            # Self-heal missing subscription records for legacy users.
-            now = utc_now()
-            trial_end = now.replace(microsecond=0) + timedelta(days=30)
-            created_sub = supabase_client.admin.table("subscriptions").upsert(
-                {
+        # Get subscription info
+        try:
+            sub_result = supabase_client.admin.table("subscriptions").select(
+                "*"
+            ).eq("user_id", user_id).limit(1).execute()
+
+            if sub_result.data:
+                subscription = sub_result.data[0]
+            else:
+                # Self-heal missing subscription records for legacy users.
+                now = utc_now()
+                trial_end = now.replace(microsecond=0) + timedelta(days=30)
+                created_sub = supabase_client.admin.table("subscriptions").upsert(
+                    {
+                        "user_id": user_id,
+                        "plan_name": "monthly",
+                        "price": 299.00,
+                        "currency": "INR",
+                        "status": "trial",
+                        "trial_start": now.isoformat(),
+                        "trial_end": trial_end.isoformat(),
+                    },
+                    on_conflict="user_id",
+                ).execute()
+                subscription = created_sub.data[0] if created_sub.data else {
                     "user_id": user_id,
                     "plan_name": "monthly",
                     "price": 299.00,
@@ -237,61 +249,87 @@ async def get_user_dashboard(
                     "status": "trial",
                     "trial_start": now.isoformat(),
                     "trial_end": trial_end.isoformat(),
-                },
-                on_conflict="user_id",
-            ).execute()
-            subscription = created_sub.data[0] if created_sub.data else {
+                }
+        except Exception as sub_error:
+            logger.error(f"Failed to fetch subscription for {user_id}: {sub_error}")
+            subscription = {
                 "user_id": user_id,
-                "plan_name": "monthly",
-                "price": 299.00,
-                "currency": "INR",
-                "status": "trial",
-                "trial_start": now.isoformat(),
-                "trial_end": trial_end.isoformat(),
+                "status": "expired",
             }
-        
-        # Get usage metrics
-        usage_result = supabase_client.admin.table("usage_metrics").select(
-            "*"
-        ).eq("user_id", user_id).limit(1).execute()
 
-        if usage_result.data:
-            usage = usage_result.data[0]
-        else:
-            created_usage = supabase_client.admin.table("usage_metrics").upsert(
-                {"user_id": user_id},
-                on_conflict="user_id",
-            ).execute()
-            usage = created_usage.data[0] if created_usage.data else {
+        # Get usage metrics
+        try:
+            usage_result = supabase_client.admin.table("usage_metrics").select(
+                "*"
+            ).eq("user_id", user_id).limit(1).execute()
+
+            if usage_result.data:
+                usage = usage_result.data[0]
+            else:
+                created_usage = supabase_client.admin.table("usage_metrics").upsert(
+                    {"user_id": user_id},
+                    on_conflict="user_id",
+                ).execute()
+                usage = created_usage.data[0] if created_usage.data else {
+                    "user_id": user_id,
+                    "posts_generated": 0,
+                    "images_generated": 0,
+                    "linkedin_posts": 0,
+                    "api_calls": 0,
+                }
+        except Exception as usage_error:
+            logger.error(f"Failed to fetch usage for {user_id}: {usage_error}")
+            usage = {
                 "user_id": user_id,
                 "posts_generated": 0,
+                "images_generated": 0,
                 "linkedin_posts": 0,
+                "api_calls": 0,
             }
-        
+
         # Get schedule
         schedule = await scheduler_service.get_user_schedule(user_id)
-        
+
         # Get next scheduled post
-        next_post_result = supabase_client.admin.table("posts").select(
-            "*"
-        ).eq("user_id", user_id).eq("status", "scheduled").order(
-            "scheduled_at"
-        ).limit(1).execute()
-        
-        next_post = next_post_result.data[0] if next_post_result.data else None
-        
+        next_post = None
+        try:
+            next_post_result = supabase_client.admin.table("posts").select(
+                "*"
+            ).eq("user_id", user_id).eq("status", "scheduled").order(
+                "scheduled_at"
+            ).limit(1).execute()
+            next_post = next_post_result.data[0] if next_post_result.data else None
+        except Exception as next_post_error:
+            # Backward-compatible fallback for older DBs without scheduled_at.
+            logger.warning(
+                f"Primary next-post query failed for {user_id}, using fallback: {next_post_error}"
+            )
+            try:
+                fallback_result = supabase_client.admin.table("posts").select(
+                    "*"
+                ).eq("user_id", user_id).eq("status", "scheduled").order(
+                    "created_at", desc=True
+                ).limit(1).execute()
+                next_post = fallback_result.data[0] if fallback_result.data else None
+            except Exception as fallback_error:
+                logger.warning(f"Fallback next-post query failed for {user_id}: {fallback_error}")
+                next_post = None
+
         # Get recent posts
-        recent_posts_result = supabase_client.admin.table("posts").select(
-            "*"
-        ).eq("user_id", user_id).order("created_at", desc=True).limit(5).execute()
-        
-        recent_posts = recent_posts_result.data or []
-        
+        try:
+            recent_posts_result = supabase_client.admin.table("posts").select(
+                "*"
+            ).eq("user_id", user_id).order("created_at", desc=True).limit(5).execute()
+            recent_posts = recent_posts_result.data or []
+        except Exception as recent_posts_error:
+            logger.warning(f"Failed to fetch recent posts for {user_id}: {recent_posts_error}")
+            recent_posts = []
+
         # Check LinkedIn connection
         linkedin_token = supabase_client.admin.table("linkedin_tokens").select(
             "expires_at"
         ).eq("user_id", user_id).execute()
-        
+
         linkedin_connected = False
         if linkedin_token.data:
             linkedin_connected = is_future_datetime(
