@@ -18,7 +18,7 @@ from typing import Dict, Any, List, Optional
 from datetime import timedelta
 from ..core.config import logger
 from ..core.datetime_utils import utc_now, parse_datetime_utc
-from ..services.database import supabase_client
+from ..services.database import supabase_client, normalize_full_name
 
 
 class AdminService:
@@ -95,6 +95,38 @@ class AdminService:
         if sub.get("subscription_start"):
             return "active"
         return "expired"
+
+    @staticmethod
+    def _normalize_user_row(user_row: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Normalize user-facing profile fields for admin tables.
+        """
+        row = dict(user_row)
+        row["full_name"] = normalize_full_name(
+            row.get("full_name"),
+            row.get("email")
+        )
+        return row
+
+    @staticmethod
+    def _build_subscription_date_patch(sub: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Ensure subscription records always include start and renewal dates.
+        """
+        patch: Dict[str, Any] = {}
+        now = utc_now()
+        created_at = parse_datetime_utc(sub.get("created_at")) or now
+
+        subscription_start = parse_datetime_utc(sub.get("subscription_start"))
+        if not subscription_start:
+            patch["subscription_start"] = created_at.isoformat()
+            subscription_start = created_at
+
+        renewal_date = parse_datetime_utc(sub.get("renewal_date"))
+        if not renewal_date:
+            patch["renewal_date"] = (subscription_start + timedelta(days=30)).isoformat()
+
+        return patch
     
     # =========================================================================
     # USER MANAGEMENT
@@ -144,9 +176,13 @@ class AdminService:
             )
             
             result = query.execute()
+            users = [
+                self._normalize_user_row(user)
+                for user in (result.data or [])
+            ]
             
             return {
-                "users": result.data or [],
+                "users": users,
                 "total": total,
                 "page": page,
                 "page_size": page_size,
@@ -174,8 +210,8 @@ class AdminService:
             
             if not result.data:
                 raise Exception("User not found")
-            
-            return result.data
+
+            return self._normalize_user_row(result.data)
             
         except Exception as e:
             logger.error(f"Failed to get user details: {e}")
@@ -201,9 +237,19 @@ class AdminService:
             Updated subscription data
         """
         try:
+            sub_result = supabase_client.admin.table("subscriptions").select(
+                "*"
+            ).eq("user_id", user_id).single().execute()
+
+            if not sub_result.data:
+                raise Exception("Subscription not found")
+
+            update_payload = {"status": "blocked"}
+            update_payload.update(self._build_subscription_date_patch(sub_result.data))
+
             # Update subscription status to blocked
             result = supabase_client.admin.table("subscriptions").update({
-                "status": "blocked"
+                **update_payload
             }).eq("user_id", user_id).execute()
             
             # Log action
@@ -286,9 +332,19 @@ class AdminService:
         Suspend user access. Internally maps to blocked status.
         """
         try:
-            result = supabase_client.admin.table("subscriptions").update({
-                "status": "blocked"
-            }).eq("user_id", user_id).execute()
+            sub_result = supabase_client.admin.table("subscriptions").select(
+                "*"
+            ).eq("user_id", user_id).single().execute()
+
+            if not sub_result.data:
+                raise Exception("Subscription not found")
+
+            update_payload = {"status": "blocked"}
+            update_payload.update(self._build_subscription_date_patch(sub_result.data))
+
+            result = supabase_client.admin.table("subscriptions").update(
+                update_payload
+            ).eq("user_id", user_id).execute()
 
             await self.log_admin_action(
                 admin_id=admin_id,
@@ -368,8 +424,17 @@ class AdminService:
                 query = query.eq("status", status_filter)
             
             result = query.order("created_at", desc=True).execute()
-            
-            return result.data or []
+            subscriptions = result.data or []
+
+            normalized: List[Dict[str, Any]] = []
+            for sub in subscriptions:
+                item = dict(sub)
+                user_data = item.get("users")
+                if isinstance(user_data, dict):
+                    item["users"] = self._normalize_user_row(user_data)
+                normalized.append(item)
+
+            return normalized
             
         except Exception as e:
             logger.error(f"Failed to get subscriptions: {e}")
@@ -413,10 +478,16 @@ class AdminService:
             new_trial_end = max(current_trial_end, utc_now()) + timedelta(days=days)
             
             # Update subscription
-            result = supabase_client.admin.table("subscriptions").update({
+            update_payload: Dict[str, Any] = {
                 "trial_end": new_trial_end.isoformat(),
                 "status": "trial"
-            }).eq("user_id", user_id).execute()
+            }
+            if not sub.get("trial_start"):
+                update_payload["trial_start"] = utc_now().isoformat()
+
+            result = supabase_client.admin.table("subscriptions").update(
+                update_payload
+            ).eq("user_id", user_id).execute()
             
             # Log action
             await self.log_admin_action(
@@ -500,10 +571,20 @@ class AdminService:
             Updated subscription data
         """
         try:
+            sub_result = supabase_client.admin.table("subscriptions").select(
+                "*"
+            ).eq("user_id", user_id).single().execute()
+
+            if not sub_result.data:
+                raise Exception("Subscription not found")
+
+            update_payload = {"status": "cancelled"}
+            update_payload.update(self._build_subscription_date_patch(sub_result.data))
+
             # Update subscription to cancelled
-            result = supabase_client.admin.table("subscriptions").update({
-                "status": "cancelled"
-            }).eq("user_id", user_id).execute()
+            result = supabase_client.admin.table("subscriptions").update(
+                update_payload
+            ).eq("user_id", user_id).execute()
             
             # Log action
             await self.log_admin_action(
@@ -537,9 +618,19 @@ class AdminService:
         Internally maps to `cancelled` status until billing integration is added.
         """
         try:
-            result = supabase_client.admin.table("subscriptions").update({
-                "status": "cancelled"
-            }).eq("user_id", user_id).execute()
+            sub_result = supabase_client.admin.table("subscriptions").select(
+                "*"
+            ).eq("user_id", user_id).single().execute()
+
+            if not sub_result.data:
+                raise Exception("Subscription not found")
+
+            update_payload = {"status": "cancelled"}
+            update_payload.update(self._build_subscription_date_patch(sub_result.data))
+
+            result = supabase_client.admin.table("subscriptions").update(
+                update_payload
+            ).eq("user_id", user_id).execute()
 
             await self.log_admin_action(
                 admin_id=admin_id,

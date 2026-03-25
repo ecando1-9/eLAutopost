@@ -17,7 +17,7 @@ export async function GET(_request: Request) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const response = await fetch(`${BACKEND_URL}/settings?user_id=${session.user.id}`, {
+        const response = await fetch(`${BACKEND_URL}/settings/`, {
             headers: {
                 Authorization: `Bearer ${session.access_token}`,
             },
@@ -27,7 +27,10 @@ export async function GET(_request: Request) {
         const text = await response.text();
         return new NextResponse(text, {
             status: response.status,
-            headers: { 'Content-Type': response.headers.get('content-type') || 'application/json' },
+            headers: {
+                'Content-Type': response.headers.get('content-type') || 'application/json',
+                'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+            },
         });
     } catch (error: any) {
         console.error('Error fetching settings:', error);
@@ -45,7 +48,7 @@ export async function PATCH(request: Request) {
         }
 
         const body = await request.json();
-        const response = await fetch(`${BACKEND_URL}/settings?user_id=${session.user.id}`, {
+        const response = await fetch(`${BACKEND_URL}/settings/`, {
             method: 'PATCH',
             headers: {
                 'Content-Type': 'application/json',
@@ -57,7 +60,10 @@ export async function PATCH(request: Request) {
         const text = await response.text();
         return new NextResponse(text, {
             status: response.status,
-            headers: { 'Content-Type': response.headers.get('content-type') || 'application/json' },
+            headers: {
+                'Content-Type': response.headers.get('content-type') || 'application/json',
+                'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+            },
         });
     } catch (error: any) {
         console.error('Error updating settings:', error);

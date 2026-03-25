@@ -11,13 +11,14 @@ Security:
 - Input validation
 """
 
-from fastapi import APIRouter, HTTPException, status, Request
+from fastapi import APIRouter, HTTPException, status, Request, Depends
 
 from ..models.schemas import UserSettings, UserSettingsUpdate
 from ..core.config import logger
 from ..services.database import supabase_client, update_user_settings, log_audit_event
 from ..core.security import get_client_ip
 from ..middleware.rate_limit import limiter
+from ..middleware.admin_auth import get_current_user_id
 
 
 router = APIRouter()
@@ -29,7 +30,10 @@ router = APIRouter()
 
 @router.get("/", response_model=UserSettings)
 @limiter.limit("60/minute")
-async def get_settings(request: Request, user_id: str):
+async def get_settings(
+    request: Request,
+    user_id: str = Depends(get_current_user_id)
+):
     """
     Get user settings.
     
@@ -54,7 +58,13 @@ async def get_settings(request: Request, user_id: str):
             default_tone=settings_data.get("default_tone", "professional"),
             auto_post=settings_data.get("auto_post", False),
             notification_email=settings_data.get("notification_email", True),
-            preferred_content_types=settings_data.get("preferred_content_types", [])
+            preferred_content_types=settings_data.get("preferred_content_types", []),
+            default_goal=settings_data.get("default_goal", "Authority"),
+            default_audience=settings_data.get("default_audience", "General Professionals"),
+            default_style=settings_data.get("default_style", "Carousel slides"),
+            publish_target=settings_data.get("publish_target", "person"),
+            organization_id=settings_data.get("organization_id"),
+            max_posts_per_day=settings_data.get("max_posts_per_day", 3),
         )
         
     except Exception as e:
@@ -70,7 +80,7 @@ async def get_settings(request: Request, user_id: str):
 async def update_settings(
     request: Request,
     settings_update: UserSettingsUpdate,
-    user_id: str
+    user_id: str = Depends(get_current_user_id)
 ):
     """
     Update user settings.
@@ -95,6 +105,18 @@ async def update_settings(
             update_data["preferred_content_types"] = [
                 ct.value for ct in settings_update.preferred_content_types
             ]
+        if settings_update.default_goal is not None:
+            update_data["default_goal"] = settings_update.default_goal
+        if settings_update.default_audience is not None:
+            update_data["default_audience"] = settings_update.default_audience
+        if settings_update.default_style is not None:
+            update_data["default_style"] = settings_update.default_style
+        if settings_update.publish_target is not None:
+            update_data["publish_target"] = settings_update.publish_target
+        if settings_update.organization_id is not None:
+            update_data["organization_id"] = settings_update.organization_id
+        if settings_update.max_posts_per_day is not None:
+            update_data["max_posts_per_day"] = settings_update.max_posts_per_day
         
         if not update_data:
             raise HTTPException(
@@ -103,7 +125,28 @@ async def update_settings(
             )
         
         # Update settings
-        updated_settings = await update_user_settings(user_id, update_data)
+        try:
+            updated_settings = await update_user_settings(user_id, update_data)
+        except Exception as update_error:
+            # Backward-compatible fallback when new columns are not migrated yet.
+            if "column" in str(update_error).lower() and "does not exist" in str(update_error).lower():
+                fallback_keys = {
+                    "default_tone",
+                    "auto_post",
+                    "notification_email",
+                    "preferred_content_types",
+                    "max_posts_per_day",
+                }
+                fallback_update = {
+                    key: value
+                    for key, value in update_data.items()
+                    if key in fallback_keys
+                }
+                if not fallback_update:
+                    raise
+                updated_settings = await update_user_settings(user_id, fallback_update)
+            else:
+                raise
         
         # Log event
         await log_audit_event(
@@ -119,7 +162,13 @@ async def update_settings(
             default_tone=updated_settings.get("default_tone", "professional"),
             auto_post=updated_settings.get("auto_post", False),
             notification_email=updated_settings.get("notification_email", True),
-            preferred_content_types=updated_settings.get("preferred_content_types", [])
+            preferred_content_types=updated_settings.get("preferred_content_types", []),
+            default_goal=updated_settings.get("default_goal", "Authority"),
+            default_audience=updated_settings.get("default_audience", "General Professionals"),
+            default_style=updated_settings.get("default_style", "Carousel slides"),
+            publish_target=updated_settings.get("publish_target", "person"),
+            organization_id=updated_settings.get("organization_id"),
+            max_posts_per_day=updated_settings.get("max_posts_per_day", 3),
         )
         
     except HTTPException:
@@ -134,7 +183,10 @@ async def update_settings(
 
 @router.post("/reset", response_model=UserSettings)
 @limiter.limit("10/minute")
-async def reset_settings(request: Request, user_id: str):
+async def reset_settings(
+    request: Request,
+    user_id: str = Depends(get_current_user_id)
+):
     """
     Reset settings to defaults.
     
@@ -149,7 +201,13 @@ async def reset_settings(request: Request, user_id: str):
             "default_tone": "professional",
             "auto_post": False,
             "notification_email": True,
-            "preferred_content_types": []
+            "preferred_content_types": [],
+            "default_goal": "Authority",
+            "default_audience": "General Professionals",
+            "default_style": "Carousel slides",
+            "publish_target": "person",
+            "organization_id": None,
+            "max_posts_per_day": 3,
         }
         
         await update_user_settings(user_id, default_settings)

@@ -17,9 +17,10 @@ Security:
 from fastapi import APIRouter, HTTPException, status, Request, Depends
 from typing import Optional, List
 from pydantic import BaseModel, Field
+from datetime import timedelta
 
 from ..core.config import logger
-from ..core.datetime_utils import is_future_datetime
+from ..core.datetime_utils import is_future_datetime, utc_now
 from ..services.content_queue import queue_service
 from ..services.scheduler import scheduler_service
 from ..middleware.admin_auth import get_current_user_id
@@ -220,15 +221,52 @@ async def get_user_dashboard(
         sub_result = supabase_client.admin.table("subscriptions").select(
             "*"
         ).eq("user_id", user_id).limit(1).execute()
-        
-        subscription = sub_result.data[0] if sub_result.data else {}
+
+        if sub_result.data:
+            subscription = sub_result.data[0]
+        else:
+            # Self-heal missing subscription records for legacy users.
+            now = utc_now()
+            trial_end = now.replace(microsecond=0) + timedelta(days=30)
+            created_sub = supabase_client.admin.table("subscriptions").upsert(
+                {
+                    "user_id": user_id,
+                    "plan_name": "monthly",
+                    "price": 299.00,
+                    "currency": "INR",
+                    "status": "trial",
+                    "trial_start": now.isoformat(),
+                    "trial_end": trial_end.isoformat(),
+                },
+                on_conflict="user_id",
+            ).execute()
+            subscription = created_sub.data[0] if created_sub.data else {
+                "user_id": user_id,
+                "plan_name": "monthly",
+                "price": 299.00,
+                "currency": "INR",
+                "status": "trial",
+                "trial_start": now.isoformat(),
+                "trial_end": trial_end.isoformat(),
+            }
         
         # Get usage metrics
         usage_result = supabase_client.admin.table("usage_metrics").select(
             "*"
         ).eq("user_id", user_id).limit(1).execute()
-        
-        usage = usage_result.data[0] if usage_result.data else {}
+
+        if usage_result.data:
+            usage = usage_result.data[0]
+        else:
+            created_usage = supabase_client.admin.table("usage_metrics").upsert(
+                {"user_id": user_id},
+                on_conflict="user_id",
+            ).execute()
+            usage = created_usage.data[0] if created_usage.data else {
+                "user_id": user_id,
+                "posts_generated": 0,
+                "linkedin_posts": 0,
+            }
         
         # Get schedule
         schedule = await scheduler_service.get_user_schedule(user_id)

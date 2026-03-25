@@ -41,6 +41,12 @@ interface SettingsResponse {
     auto_post?: boolean;
     notification_email?: boolean;
     preferred_content_types?: ContentType[];
+    default_goal?: string;
+    default_audience?: string;
+    default_style?: string;
+    publish_target?: PublishTarget;
+    organization_id?: string | null;
+    max_posts_per_day?: number;
 }
 
 interface LinkedInProfile {
@@ -273,6 +279,11 @@ export default function SettingsPage() {
                             ? settings.preferred_content_types
                             : ['insight', 'curiosity']
                     );
+                    if (settings.default_goal) setDefaultGoal(settings.default_goal);
+                    if (settings.default_audience) setDefaultAudience(settings.default_audience);
+                    if (settings.default_style) setDefaultStyle(settings.default_style);
+                    if (settings.publish_target) setTargetMode(settings.publish_target);
+                    if (settings.organization_id) setOrganizationId(settings.organization_id);
                 }
 
                 if (scheduleRes.ok) {
@@ -411,6 +422,11 @@ export default function SettingsPage() {
                         auto_post: isActive,
                         notification_email: notificationEmail,
                         preferred_content_types: preferredContentTypes,
+                        default_goal: defaultGoal,
+                        default_audience: defaultAudience,
+                        default_style: defaultStyle,
+                        publish_target: targetMode,
+                        organization_id: organizationId.trim() || null,
                     }),
                 }),
                 fetch('/api/v1/user/schedule', {

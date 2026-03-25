@@ -26,6 +26,25 @@ export default function UserDetailsPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [isProcessing, setIsProcessing] = useState(false);
 
+    const getDisplayName = (targetUser: User) => {
+        const raw = (targetUser.full_name || '').trim();
+        const placeholderNames = new Set([
+            'your_name_here',
+            'your email here',
+            'your_email_here',
+            'name',
+            'full name',
+        ]);
+        if (!raw || placeholderNames.has(raw.toLowerCase())) {
+            const local = (targetUser.email || 'user').split('@')[0] || 'user';
+            const readable = local.replace(/[._-]+/g, ' ').trim();
+            return readable
+                ? readable.replace(/\b\w/g, (char) => char.toUpperCase())
+                : 'User';
+        }
+        return raw;
+    };
+
     const fetchUser = async () => {
         try {
             const data = await adminService.getUser(userId);
@@ -143,6 +162,7 @@ export default function UserDetailsPage() {
     }
 
     if (!user) return null;
+    const displayName = getDisplayName(user);
 
     return (
         <div className="space-y-6">
@@ -159,10 +179,10 @@ export default function UserDetailsPage() {
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                     <div className="flex items-center">
                         <div className="h-16 w-16 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 text-2xl font-bold shrink-0">
-                            {user.full_name?.charAt(0) || user.email.charAt(0)}
+                            {displayName.charAt(0)}
                         </div>
                         <div className="ml-4">
-                            <h1 className="text-2xl font-bold text-gray-900">{user.full_name}</h1>
+                            <h1 className="text-2xl font-bold text-gray-900">{displayName}</h1>
                             <div className="flex items-center text-gray-500 mt-1">
                                 <Mail className="h-4 w-4 mr-1" />
                                 {user.email}

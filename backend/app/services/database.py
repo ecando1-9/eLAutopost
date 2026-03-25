@@ -19,6 +19,49 @@ from typing import Optional, Dict, Any
 from ..core.config import settings, logger
 
 
+PLACEHOLDER_VALUES = {
+    "your_name_here",
+    "your email here",
+    "your_email_here",
+    "name",
+    "full name",
+    "test user",
+}
+
+
+def derive_name_from_email(email: Optional[str]) -> str:
+    """
+    Build a readable display name from email local-part.
+    """
+    raw = (email or "").strip()
+    if not raw or "@" not in raw:
+        return "User"
+
+    local = raw.split("@", 1)[0].replace(".", " ").replace("_", " ").replace("-", " ")
+    cleaned = " ".join(part for part in local.split() if part)
+    if not cleaned:
+        return "User"
+    return cleaned.title()
+
+
+def normalize_full_name(full_name: Optional[str], email: Optional[str]) -> str:
+    """
+    Ensure full_name is meaningful and not placeholder text.
+    """
+    candidate = (full_name or "").strip()
+    candidate_key = candidate.lower()
+    email_key = (email or "").strip().lower()
+
+    if (
+        not candidate
+        or candidate_key in PLACEHOLDER_VALUES
+        or (email_key and candidate_key == email_key)
+    ):
+        return derive_name_from_email(email)
+
+    return candidate
+
+
 class SupabaseClient:
     """
     Wrapper for Supabase client with security best practices.
@@ -155,12 +198,16 @@ async def create_user_record(
         Created user record
     """
     try:
-        result = supabase_client.admin.table("users").insert({
-            "id": user_id,
-            "email": email,
-            "full_name": full_name,
-            "auth_provider": auth_provider
-        }).execute()
+        normalized_name = normalize_full_name(full_name, email)
+        result = supabase_client.admin.table("users").upsert(
+            {
+                "id": user_id,
+                "email": email,
+                "full_name": normalized_name,
+                "auth_provider": auth_provider
+            },
+            on_conflict="id"
+        ).execute()
         
         logger.info(f"Created user record for {email}")
         return result.data[0]
@@ -184,8 +231,25 @@ async def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
         result = supabase_client.admin.table("users").select("*").eq(
             "id", user_id
         ).single().execute()
-        
-        return result.data
+
+        user = result.data or {}
+        if not user:
+            return None
+
+        normalized_name = normalize_full_name(
+            user.get("full_name"),
+            user.get("email")
+        )
+        if normalized_name != user.get("full_name"):
+            try:
+                supabase_client.admin.table("users").update(
+                    {"full_name": normalized_name}
+                ).eq("id", user_id).execute()
+                user["full_name"] = normalized_name
+            except Exception as update_error:
+                logger.warning(f"Failed to normalize full_name for {user_id}: {update_error}")
+
+        return user
         
     except Exception as e:
         logger.warning(f"User not found: {user_id}")

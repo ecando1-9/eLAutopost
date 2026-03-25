@@ -17,7 +17,7 @@ export async function GET(_request: Request) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const response = await fetch(`${BACKEND_URL}/auth/me?user_id=${session.user.id}`, {
+        const response = await fetch(`${BACKEND_URL}/auth/me`, {
             headers: {
                 'Authorization': `Bearer ${session.access_token}`,
             },
@@ -33,7 +33,11 @@ export async function GET(_request: Request) {
         }
 
         const data = await response.json();
-        return NextResponse.json(data);
+        return NextResponse.json(data, {
+            headers: {
+                'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+            },
+        });
     } catch (error: any) {
         console.error('Error fetching user profile:', error);
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

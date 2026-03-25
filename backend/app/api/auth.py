@@ -42,7 +42,8 @@ from ..services.database import (
     supabase_client,
     create_user_record,
     get_user_by_id,
-    log_audit_event
+    log_audit_event,
+    normalize_full_name
 )
 from ..services.linkedin import linkedin_service
 from ..middleware.rate_limit import limiter, AUTH_RATE_LIMIT
@@ -363,7 +364,10 @@ async def get_linkedin_targets(
 
 @router.get("/me", response_model=UserProfile)
 @limiter.limit("60/minute")
-async def get_current_user(request: Request, user_id: str):
+async def get_current_user(
+    request: Request,
+    user_id: str = Depends(get_current_user_id)
+):
     """
     Get current user profile.
     
@@ -376,6 +380,24 @@ async def get_current_user(request: Request, user_id: str):
     try:
         user = await get_user_by_id(user_id)
         
+        if not user:
+            # Self-heal missing user profile row (common for OAuth users when DB trigger was absent).
+            auth_user = supabase_client.admin.auth.admin.get_user_by_id(user_id)
+            auth_record = getattr(auth_user, "user", None)
+            if auth_record:
+                auth_email = getattr(auth_record, "email", None)
+                auth_meta = getattr(auth_record, "user_metadata", {}) or {}
+                raw_name = auth_meta.get("full_name") if isinstance(auth_meta, dict) else None
+                resolved_name = normalize_full_name(raw_name, auth_email)
+
+                await create_user_record(
+                    user_id=user_id,
+                    email=auth_email or f"{user_id}@unknown.local",
+                    full_name=resolved_name,
+                    auth_provider="oauth"
+                )
+                user = await get_user_by_id(user_id)
+
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -418,7 +440,10 @@ async def get_current_user(request: Request, user_id: str):
 
 @router.post("/logout")
 @limiter.limit("60/minute")
-async def logout(request: Request, user_id: str):
+async def logout(
+    request: Request,
+    user_id: str = Depends(get_current_user_id)
+):
     """
     Logout user.
     

@@ -27,7 +27,10 @@ def parse_datetime_utc(value: Any) -> Optional[datetime]:
         normalized = value.strip()
         if normalized.endswith("Z"):
             normalized = normalized[:-1] + "+00:00"
-        dt = datetime.fromisoformat(normalized)
+        try:
+            dt = datetime.fromisoformat(normalized)
+        except ValueError:
+            return None
     else:
         return None
 
@@ -40,4 +43,16 @@ def parse_datetime_utc(value: Any) -> Optional[datetime]:
 def is_future_datetime(value: Any) -> bool:
     """Return True when the provided datetime value is in the future."""
     dt = parse_datetime_utc(value)
-    return bool(dt and dt > utc_now())
+    if not dt:
+        return False
+
+    now = utc_now()
+    try:
+        return dt > now
+    except TypeError:
+        # Final guard for mixed tz data.
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        else:
+            dt = dt.astimezone(timezone.utc)
+        return dt > now

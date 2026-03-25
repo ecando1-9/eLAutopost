@@ -146,11 +146,25 @@ class LinkedInService:
                 "scope": " ".join(self.scopes)
             }
             
-            # Use upsert on unique user_id to avoid insert/update race conditions.
-            supabase_client.admin.table("linkedin_tokens").upsert(
-                data_payload,
-                on_conflict="user_id"
-            ).execute()
+            # Upsert on unique user_id to avoid insert/update race conditions.
+            # Some environments may still throw duplicate-key; fallback to update.
+            try:
+                supabase_client.admin.table("linkedin_tokens").upsert(
+                    data_payload,
+                    on_conflict="user_id"
+                ).execute()
+            except Exception as upsert_error:
+                if "duplicate key value violates unique constraint" in str(upsert_error):
+                    supabase_client.admin.table("linkedin_tokens").update(
+                        {
+                            "access_token": data_payload["access_token"],
+                            "refresh_token": data_payload.get("refresh_token"),
+                            "expires_at": data_payload["expires_at"],
+                            "scope": data_payload.get("scope", "")
+                        }
+                    ).eq("user_id", user_id).execute()
+                else:
+                    raise
             
             logger.info(f"Stored LinkedIn token for user {user_id}")
             

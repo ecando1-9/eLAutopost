@@ -83,6 +83,21 @@ export default function SubscriptionsPage() {
         }
     };
 
+    const getDisplayName = (user: User) => {
+        const raw = (user.full_name || '').trim();
+        const placeholderNames = new Set([
+            'your_name_here',
+            'your email here',
+            'your_email_here',
+            'name',
+            'full name',
+        ]);
+        if (!raw || placeholderNames.has(raw.toLowerCase())) {
+            return user.email?.split('@')[0] || 'User';
+        }
+        return raw;
+    };
+
     return (
         <div className="space-y-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -144,11 +159,11 @@ export default function SubscriptionsPage() {
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <div className="flex items-center">
                                                 <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold shrink-0 text-xs">
-                                                    {user.full_name?.charAt(0)}
+                                                    {getDisplayName(user).charAt(0).toUpperCase()}
                                                 </div>
                                                 <div className="ml-3">
                                                     <Link href={`/admin/users/${user.id}`} className="text-sm font-medium text-blue-600 hover:underline">
-                                                        {user.full_name}
+                                                        {getDisplayName(user)}
                                                     </Link>
                                                     <div className="text-xs text-gray-500">{user.email}</div>
                                                 </div>
@@ -156,7 +171,7 @@ export default function SubscriptionsPage() {
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <div className="text-sm text-gray-900 font-medium">Monthly Pro</div>
-                                            <div className="text-xs text-gray-500">₹299/mo</div>
+                                            <div className="text-xs text-gray-500">INR 299/mo</div>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <span className={`px-2.5 py-0.5 inline-flex items-center text-xs font-medium rounded-full border ${getStatusColor(user.subscription_status)} capitalize`}>

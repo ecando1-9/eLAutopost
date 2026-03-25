@@ -33,7 +33,11 @@ export async function GET(_request: Request) {
         }
 
         const data = await response.json();
-        return NextResponse.json(data);
+        return NextResponse.json(data, {
+            headers: {
+                'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+            },
+        });
     } catch (error: any) {
         console.error('Error loading dashboard data:', error);
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

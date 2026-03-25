@@ -303,12 +303,26 @@ class UserSettings(BaseModel):
     auto_post: bool = Field(default=False, description="Auto-post to LinkedIn")
     notification_email: bool = Field(default=True)
     preferred_content_types: List[ContentType] = Field(default=[])
+    default_goal: str = Field(default="Authority", max_length=80)
+    default_audience: str = Field(default="General Professionals", max_length=120)
+    default_style: str = Field(default="Carousel slides", max_length=120)
+    publish_target: str = Field(default="person", pattern="^(person|organization|both)$")
+    organization_id: Optional[str] = Field(default=None, max_length=64)
     max_posts_per_day: int = Field(default=3, ge=1, le=10, description="Max posts per day")
     
-    @validator("default_tone")
-    def sanitize_tone(cls, v):
-        """Sanitize tone setting."""
-        return sanitize_input(v, max_length=50)
+    @validator("default_tone", "default_goal", "default_audience", "default_style")
+    def sanitize_settings_text(cls, v):
+        """Sanitize settings text fields."""
+        if v:
+            return sanitize_input(v, max_length=120)
+        return v
+
+    @validator("organization_id")
+    def sanitize_org_id(cls, v):
+        """Sanitize optional organization/page id."""
+        if v:
+            return sanitize_input(v, max_length=64).strip()
+        return v
 
 
 class UserSettingsUpdate(BaseModel):
@@ -317,13 +331,25 @@ class UserSettingsUpdate(BaseModel):
     auto_post: Optional[bool] = None
     notification_email: Optional[bool] = None
     preferred_content_types: Optional[List[ContentType]] = None
+    default_goal: Optional[str] = Field(None, max_length=80)
+    default_audience: Optional[str] = Field(None, max_length=120)
+    default_style: Optional[str] = Field(None, max_length=120)
+    publish_target: Optional[str] = Field(None, pattern="^(person|organization|both)$")
+    organization_id: Optional[str] = Field(None, max_length=64)
     max_posts_per_day: Optional[int] = Field(None, ge=1, le=10)
     
-    @validator("default_tone")
-    def sanitize_tone(cls, v):
-        """Sanitize tone setting."""
+    @validator("default_tone", "default_goal", "default_audience", "default_style")
+    def sanitize_update_text_fields(cls, v):
+        """Sanitize settings text fields."""
         if v:
-            return sanitize_input(v, max_length=50)
+            return sanitize_input(v, max_length=120)
+        return v
+
+    @validator("organization_id")
+    def sanitize_update_org_id(cls, v):
+        """Sanitize optional organization/page id."""
+        if v:
+            return sanitize_input(v, max_length=64).strip()
         return v
 
 

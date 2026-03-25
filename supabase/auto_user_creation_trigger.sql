@@ -16,13 +16,34 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
+DECLARE
+    resolved_name TEXT;
 BEGIN
+    -- Resolve display name with fallback to email local-part when metadata is missing/placeholder.
+    -- This prevents values like YOUR_NAME_HERE from persisting.
+    resolved_name := COALESCE(NULLIF(trim(NEW.raw_user_meta_data->>'full_name'), ''), '');
+    IF resolved_name = '' OR lower(resolved_name) IN (
+        'your_name_here',
+        'your email here',
+        'your_email_here',
+        'full name',
+        'name',
+        'test user'
+    ) OR lower(resolved_name) = lower(COALESCE(NEW.email, '')) THEN
+        resolved_name := INITCAP(
+            REPLACE(REPLACE(REPLACE(split_part(COALESCE(NEW.email, ''), '@', 1), '.', ' '), '_', ' '), '-', ' ')
+        );
+    END IF;
+    IF resolved_name = '' THEN
+        resolved_name := 'User';
+    END IF;
+
     -- Insert into public.users table
     INSERT INTO public.users (id, email, full_name, auth_provider)
     VALUES (
         NEW.id,
         NEW.email,
-        COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.email),
+        resolved_name,
         COALESCE(NEW.raw_app_meta_data->>'provider', 'email')
     )
     ON CONFLICT (id) DO NOTHING;
@@ -32,7 +53,7 @@ BEGIN
     VALUES (NEW.id)
     ON CONFLICT (user_id) DO NOTHING;
     
-    -- Create subscription with 7-day trial
+    -- Create subscription with 30-day trial
     INSERT INTO public.subscriptions (
         user_id, 
         plan_name, 

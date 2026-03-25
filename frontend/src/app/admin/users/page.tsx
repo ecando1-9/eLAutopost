@@ -68,6 +68,25 @@ export default function UsersPage() {
         }
     };
 
+    const getDisplayName = (user: User) => {
+        const raw = (user.full_name || '').trim();
+        const placeholderNames = new Set([
+            'your_name_here',
+            'your email here',
+            'your_email_here',
+            'name',
+            'full name',
+        ]);
+        if (!raw || placeholderNames.has(raw.toLowerCase())) {
+            const local = (user.email || 'user').split('@')[0] || 'user';
+            const readable = local.replace(/[._-]+/g, ' ').trim();
+            return readable
+                ? readable.replace(/\b\w/g, (char) => char.toUpperCase())
+                : 'User';
+        }
+        return raw;
+    };
+
     return (
         <div className="space-y-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -135,10 +154,10 @@ export default function UsersPage() {
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <div className="flex items-center">
                                                 <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold shrink-0">
-                                                    {user.full_name?.charAt(0) || user.email.charAt(0)}
+                                                    {getDisplayName(user).charAt(0)}
                                                 </div>
                                                 <div className="ml-4">
-                                                    <div className="text-sm font-medium text-gray-900">{user.full_name}</div>
+                                                    <div className="text-sm font-medium text-gray-900">{getDisplayName(user)}</div>
                                                     <div className="text-sm text-gray-500">{user.email}</div>
                                                 </div>
                                             </div>

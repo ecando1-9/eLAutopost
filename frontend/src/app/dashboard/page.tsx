@@ -45,37 +45,73 @@ export default function UserDashboard() {
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState<DashboardData | null>(null);
     const [user, setUser] = useState<any>(null);
+    const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
     useEffect(() => {
-        checkAuth();
-        fetchDashboardData();
+        let mounted = true;
+
+        const initialize = async () => {
+            try {
+                const { data: { session } } = await supabase.auth.getSession();
+                if (!session) {
+                    router.push('/login');
+                    return;
+                }
+
+                if (!mounted) return;
+                setUser(session.user);
+                await fetchDashboardData();
+            } catch (error) {
+                console.error('Failed to initialize dashboard:', error);
+                if (mounted) {
+                    setErrorMessage('Failed to load your dashboard. Please refresh.');
+                    setLoading(false);
+                }
+            }
+        };
+
+        initialize();
+
+        const onFocus = () => {
+            void fetchDashboardData(false);
+        };
+        window.addEventListener('focus', onFocus);
+        const intervalId = window.setInterval(() => {
+            void fetchDashboardData(false);
+        }, 60000);
+
+        return () => {
+            mounted = false;
+            window.removeEventListener('focus', onFocus);
+            window.clearInterval(intervalId);
+        };
     }, []);
 
-    const checkAuth = async () => {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-            router.push('/login');
-        } else {
-            setUser(user);
+    const fetchDashboardData = async (showLoader = true) => {
+        if (showLoader) {
+            setLoading(true);
         }
-    };
-
-    const fetchDashboardData = async () => {
         try {
+            setErrorMessage(null);
             const response = await fetch('/api/v1/user/dashboard', {
-                headers: {
-                    'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
-                }
+                cache: 'no-store',
             });
 
             if (response.ok) {
                 const result = await response.json();
                 setData(result);
+                return;
             }
+
+            const errorText = await response.text();
+            setErrorMessage(errorText || 'Failed to fetch dashboard data');
         } catch (error) {
             console.error('Failed to fetch dashboard data:', error);
+            setErrorMessage('Failed to fetch dashboard data');
         } finally {
-            setLoading(false);
+            if (showLoader) {
+                setLoading(false);
+            }
         }
     };
 
@@ -136,6 +172,12 @@ export default function UserDashboard() {
 
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 {/* Subscription Status Banner */}
+                {errorMessage && (
+                    <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700">
+                        {errorMessage}
+                    </div>
+                )}
+
                 {!hasAccess && (
                     <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                         <div className="flex items-center">
