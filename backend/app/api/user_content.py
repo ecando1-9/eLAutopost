@@ -347,7 +347,7 @@ async def get_user_dashboard(
         }
         
     except Exception as e:
-        logger.error(f"Failed to get dashboard data: {e}")
+        logger.error(f"Failed to get dashboard data: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve dashboard data"
