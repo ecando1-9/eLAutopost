@@ -28,12 +28,14 @@ type ContentType = 'alert' | 'curiosity' | 'insight' | 'future';
 type PublishTarget = 'person' | 'organization' | 'both';
 
 interface LocalPreferences {
-    defaultGoal: string;
-    defaultAudience: string;
-    defaultStyle: string;
-    defaultTone: string;
-    targetMode: PublishTarget;
-    organizationId: string;
+    defaultGoal?: string;
+    defaultAudience?: string;
+    defaultStyle?: string;
+    defaultTone?: string;
+    targetMode?: PublishTarget;
+    organizationId?: string;
+    emojiDensity?: 'None' | 'Low' | 'Medium' | 'High';
+    autoFormatReach?: boolean;
 }
 
 interface SettingsResponse {
@@ -140,6 +142,8 @@ async function readErrorMessage(response: Response): Promise<string> {
     return raw;
 }
 
+const EMOJI_LEVELS = ['None', 'Low', 'Medium', 'High'];
+
 export default function SettingsPage() {
     const router = useRouter();
     const supabase = createClientComponentClient();
@@ -167,6 +171,8 @@ export default function SettingsPage() {
     const [defaultStyle, setDefaultStyle] = useState('Carousel slides');
     const [targetMode, setTargetMode] = useState<PublishTarget>('person');
     const [organizationId, setOrganizationId] = useState('');
+    const [emojiDensity, setEmojiDensity] = useState<'None'|'Low'|'Medium'|'High'>('Medium');
+    const [autoFormatReach, setAutoFormatReach] = useState(true);
 
     // Schedule settings
     const [isActive, setIsActive] = useState(false);
@@ -371,6 +377,8 @@ export default function SettingsPage() {
                         if (prefs.defaultTone) setDefaultTone(prefs.defaultTone);
                         if (prefs.targetMode) setTargetMode(prefs.targetMode);
                         if (prefs.organizationId) setOrganizationId(prefs.organizationId);
+                        if (prefs.emojiDensity) setEmojiDensity(prefs.emojiDensity as 'None'|'Low'|'Medium'|'High');
+                        if (prefs.autoFormatReach !== undefined) setAutoFormatReach(prefs.autoFormatReach);
                     }
                 } catch (error) {
                     console.error('Failed to read local preferences:', error);
@@ -510,6 +518,8 @@ export default function SettingsPage() {
                 defaultTone,
                 targetMode,
                 organizationId: organizationId.trim(),
+                emojiDensity,
+                autoFormatReach
             };
             localStorage.setItem(PREFERENCES_KEY, JSON.stringify(localPreferences));
             setCategories(normalizedSelectedCategories);
@@ -906,7 +916,7 @@ export default function SettingsPage() {
                             ))}
                         </select>
 
-                        <div className="grid sm:grid-cols-3 gap-3 mb-4">
+                        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
                             <div>
                                 <label className="block text-xs font-semibold text-slate-600 mb-1 uppercase tracking-wide">
                                     Default Goal
@@ -954,6 +964,40 @@ export default function SettingsPage() {
                                         </option>
                                     ))}
                                 </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-600 mb-1 uppercase tracking-wide">
+                                    Emoji Density
+                                </label>
+                                <select
+                                    value={emojiDensity}
+                                    onChange={(event) => setEmojiDensity(event.target.value as 'None'|'Low'|'Medium'|'High')}
+                                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                >
+                                    {EMOJI_LEVELS.map((level) => (
+                                        <option key={level} value={level}>
+                                            {level} Emojis
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center justify-between rounded-xl border border-slate-200 p-4 mb-5 bg-slate-50 relative overflow-hidden">
+                            <div className="absolute top-0 right-0 p-4 text-sky-500/10 pointer-events-none">
+                                <Sparkles className="h-16 w-16" />
+                            </div>
+                            <div className="relative z-10">
+                                <p className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                                    Maximize Formatting Reach
+                                </p>
+                                <p className="text-xs text-slate-500 mt-1 max-w-sm">
+                                    Automatically overwrite style choices with the most viral LinkedIn formatting 
+                                    (e.g. listicles, engaging hooks) tailored to your topic and the algorithm.
+                                </p>
+                            </div>
+                            <div className="relative z-10 shrink-0">
+                                <Toggle enabled={autoFormatReach} onChange={() => setAutoFormatReach((current) => !current)} />
                             </div>
                         </div>
 

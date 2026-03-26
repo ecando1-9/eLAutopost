@@ -50,6 +50,8 @@ interface FormData {
     includeEmojis: boolean;
     includeHashtags: boolean;
     numberOfHashtags: number;
+    emojiDensity: 'None' | 'Low' | 'Medium' | 'High';
+    autoFormatReach: boolean;
 }
 
 type PublishTarget = 'person' | 'organization' | 'both';
@@ -61,6 +63,8 @@ interface LocalPreferences {
     defaultTone?: string;
     targetMode?: PublishTarget;
     organizationId?: string;
+    emojiDensity?: 'None' | 'Low' | 'Medium' | 'High';
+    autoFormatReach?: boolean;
 }
 
 const POST_LENGTHS = [
@@ -146,6 +150,8 @@ function CreateContentPageContent() {
         includeEmojis: true,
         includeHashtags: true,
         numberOfHashtags: 5,
+        emojiDensity: 'Medium',
+        autoFormatReach: true,
     });
 
     // Preview & editing state
@@ -193,6 +199,8 @@ function CreateContentPageContent() {
                     audience: prefs.defaultAudience || prev.audience,
                     style: prefs.defaultStyle || prev.style,
                     tone: normalizedTone || prev.tone,
+                    emojiDensity: prefs.emojiDensity || prev.emojiDensity,
+                    autoFormatReach: prefs.autoFormatReach !== undefined ? prefs.autoFormatReach : prev.autoFormatReach,
                 }));
                 if (prefs.targetMode) {
                     setTargetMode(prefs.targetMode);
@@ -317,8 +325,9 @@ function CreateContentPageContent() {
                         formData.instructions,
                         `Post length: ${formData.postLength}`,
                         `Language: ${formData.language}`,
-                        formData.includeEmojis ? 'Include relevant emojis in the post' : 'Do NOT use any emojis',
+                        formData.emojiDensity === 'None' ? 'Do NOT use any emojis.' : `Emoji density level: ${formData.emojiDensity}. Integrate emojis naturally based on this density.`,
                         formData.includeHashtags ? `Include ${formData.numberOfHashtags} relevant hashtags` : 'Do NOT include hashtags',
+                        formData.autoFormatReach ? 'CRITICAL: Override the requested style ONLY if a more highly engaging, viral formatting structure (like Listicles, Broetry, or polarizing hooks) will achieve massive reach on the LinkedIn algorithm for this specific topic.' : '',
                     ].filter(Boolean).join('. ')
                 })
             });
@@ -887,14 +896,22 @@ function CreateContentPageContent() {
                                                     {/* Emojis & Hashtags */}
                                                     <div className="grid grid-cols-2 gap-3">
                                                         <div
-                                                            onClick={() => setFormData({ ...formData, includeEmojis: !formData.includeEmojis })}
+                                                            onClick={() => {
+                                                                const cycle: Record<string, 'None'|'Low'|'Medium'|'High'> = {
+                                                                    'None': 'Low',
+                                                                    'Low': 'Medium',
+                                                                    'Medium': 'High',
+                                                                    'High': 'None'
+                                                                };
+                                                                setFormData({ ...formData, emojiDensity: cycle[formData.emojiDensity] || 'Medium' });
+                                                            }}
                                                             className={`cursor-pointer p-3 rounded-xl border-2 transition-all ${
-                                                                formData.includeEmojis ? 'border-indigo-600 bg-indigo-50' : 'border-gray-200'
+                                                                formData.emojiDensity !== 'None' ? 'border-indigo-600 bg-indigo-50' : 'border-gray-200'
                                                             }`}
                                                         >
                                                             <p className="text-lg">😊</p>
-                                                            <p className="text-sm font-semibold text-gray-800 mt-1">Use Emojis</p>
-                                                            <p className="text-xs text-gray-500">{formData.includeEmojis ? 'Enabled' : 'Disabled'}</p>
+                                                            <p className="text-sm font-semibold text-gray-800 mt-1">Emoji Density</p>
+                                                            <p className="text-xs text-indigo-600 font-bold uppercase tracking-wider mt-0.5">{formData.emojiDensity}</p>
                                                         </div>
                                                         <div
                                                             onClick={() => setFormData({ ...formData, includeHashtags: !formData.includeHashtags })}
