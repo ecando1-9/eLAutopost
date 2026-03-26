@@ -178,6 +178,7 @@ export default function SettingsPage() {
     const [showAllCategories, setShowAllCategories] = useState(false);
     const [customCategory, setCustomCategory] = useState('');
     const [autoTopic, setAutoTopic] = useState(true);
+    const [maxPostsPerDay, setMaxPostsPerDay] = useState(1);
 
     const setupChecks = useMemo(
         () => [
@@ -284,6 +285,9 @@ export default function SettingsPage() {
                     if (settings.default_style) setDefaultStyle(settings.default_style);
                     if (settings.publish_target) setTargetMode(settings.publish_target);
                     if (settings.organization_id) setOrganizationId(settings.organization_id);
+                    if (typeof settings.max_posts_per_day === 'number') {
+                        setMaxPostsPerDay(Math.min(5, Math.max(1, settings.max_posts_per_day)));
+                    }
                 }
 
                 if (scheduleRes.ok) {
@@ -427,6 +431,7 @@ export default function SettingsPage() {
                         default_style: defaultStyle,
                         publish_target: targetMode,
                         organization_id: organizationId.trim() || null,
+                        max_posts_per_day: maxPostsPerDay,
                     }),
                 }),
                 fetch('/api/v1/user/schedule', {
@@ -721,6 +726,31 @@ export default function SettingsPage() {
                                     ))}
                                 </select>
                             </div>
+                        </div>
+
+                        {/* Posts Per Day */}
+                        <div className="mb-4">
+                            <label className="block text-sm font-semibold text-slate-800 mb-2">
+                                Posts per day: <span className="text-sky-700 font-bold">{maxPostsPerDay}</span>
+                            </label>
+                            <input
+                                type="range"
+                                min={1}
+                                max={5}
+                                step={1}
+                                value={maxPostsPerDay}
+                                onChange={(e) => setMaxPostsPerDay(Number(e.target.value))}
+                                className="w-full accent-sky-600"
+                            />
+                            <div className="flex justify-between text-[11px] text-slate-400 mt-1">
+                                {[1, 2, 3, 4, 5].map((n) => (
+                                    <span key={n}>{n}</span>
+                                ))}
+                            </div>
+                            <p className="text-xs text-slate-500 mt-1">
+                                Auto-generator will schedule up to {maxPostsPerDay} post{maxPostsPerDay > 1 ? 's' : ''} per active day,
+                                spread evenly from your posting time ({timeOfDay}).
+                            </p>
                         </div>
 
                         <label className="block text-sm font-semibold text-slate-800 mb-2">Topic categories</label>

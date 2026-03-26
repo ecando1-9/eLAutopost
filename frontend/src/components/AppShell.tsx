@@ -113,14 +113,15 @@ export default function AppShell({
                                 <Link
                                     key={item.href}
                                     href={item.href}
-                                    className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
+                                    title={item.label}
+                                    className={`inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-semibold transition-colors ${
                                         active
                                             ? 'bg-slate-900 text-white'
                                             : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                                     }`}
                                 >
-                                    <Icon className="h-4 w-4" />
-                                    {item.label}
+                                    <Icon className="h-4 w-4 flex-shrink-0" />
+                                    <span className="hidden lg:inline">{item.label}</span>
                                 </Link>
                             );
                         })}

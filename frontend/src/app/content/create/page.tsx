@@ -167,6 +167,7 @@ function CreateContentPageContent() {
         return new Date(base.getTime() - tzOffsetMs).toISOString().slice(0, 16);
     });
     const [userScheduleInfo, setUserScheduleInfo] = useState<{ time: string; days: string[]; postsPerDay: number } | null>(null);
+    const [linkedInConnected, setLinkedInConnected] = useState<boolean | null>(null);
 
     // Template/Theme Data
     const templates = [
@@ -231,9 +232,10 @@ function CreateContentPageContent() {
     useEffect(() => {
         const loadBackendDefaults = async () => {
             try {
-                const [settingsRes, scheduleRes] = await Promise.all([
+                const [settingsRes, scheduleRes, meRes] = await Promise.all([
                     fetch('/api/v1/settings', { cache: 'no-store' }),
                     fetch('/api/v1/user/schedule', { cache: 'no-store' }),
+                    fetch('/api/v1/auth/me', { cache: 'no-store' }),
                 ]);
 
                 if (settingsRes.ok) {
@@ -262,6 +264,13 @@ function CreateContentPageContent() {
                         const maxPerDay = schedule.max_posts_per_day || 3;
                         setUserScheduleInfo({ time: schedule.time_of_day.slice(0, 5), days, postsPerDay: maxPerDay });
                     }
+                }
+
+                if (meRes.ok) {
+                    const me = await meRes.json();
+                    setLinkedInConnected(Boolean(me.linkedin_connected));
+                } else {
+                    setLinkedInConnected(false);
                 }
             } catch (error) {
                 console.error('Failed to load backend defaults:', error);
@@ -1057,39 +1066,56 @@ function CreateContentPageContent() {
                                         </div>
                                     </div>
 
-                                    {/* Action Buttons */}
-                                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                                        <button 
-                                            onClick={generatePdf}
-                                            disabled={isGeneratingPdf}
-                                            className="p-4 bg-white border border-gray-200 rounded-xl flex flex-col items-center justify-center hover:border-indigo-600 hover:text-indigo-600 transition-all group"
-                                        >
-                                            {isGeneratingPdf ? <Loader2 className="h-6 w-6 animate-spin" /> : <Download className="h-6 w-6 mb-2 group-hover:scale-110 transition-transform" />}
-                                            <span className="text-xs font-bold">Download PDF</span>
-                                        </button>
-                                        <button
-                                            onClick={handlePostNow}
-                                            disabled={isSavingPost}
-                                            className="p-4 bg-white border border-gray-200 rounded-xl flex flex-col items-center justify-center hover:border-blue-600 hover:text-blue-600 transition-all group disabled:opacity-60"
-                                        >
-                                            <Share2 className="h-6 w-6 mb-2 group-hover:scale-110 transition-transform text-blue-600" />
-                                            <span className="text-xs font-bold">Post Now</span>
-                                        </button>
+                                    {/* LinkedIn Not Connected Warning */}
+                                    {linkedInConnected === false && (
+                                        <div className="flex items-start gap-3 p-3 rounded-xl bg-amber-50 border border-amber-200">
+                                            <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                                            <div className="flex-1 text-sm text-amber-800">
+                                                <span className="font-semibold">LinkedIn not connected.</span> You can still save or schedule — but to post now, go to{' '}
+                                                <button onClick={() => router.push('/settings')} className="underline font-bold hover:text-amber-900">Settings</button>
+                                                {' '}and connect your LinkedIn account first.
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Primary CTA: Post Now */}
+                                    <button
+                                        onClick={handlePostNow}
+                                        disabled={isSavingPost}
+                                        className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl flex items-center justify-center gap-3 font-bold text-base shadow-lg shadow-blue-200 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
+                                    >
+                                        {isSavingPost ? (
+                                            <><Loader2 className="h-5 w-5 animate-spin" /><span>Publishing to LinkedIn…</span></>
+                                        ) : (
+                                            <><Share2 className="h-5 w-5" /><span>Publish to LinkedIn Now</span></>
+                                        )}
+                                    </button>
+
+                                    {/* Secondary Actions */}
+                                    <div className="grid grid-cols-3 gap-3">
                                         <button
                                             onClick={handleSchedulePost}
                                             disabled={isSavingPost}
-                                            className="p-4 bg-white border border-gray-200 rounded-xl flex flex-col items-center justify-center hover:border-indigo-600 hover:text-indigo-600 transition-all group disabled:opacity-60"
+                                            className="p-3 bg-white border border-gray-200 rounded-xl flex flex-col items-center justify-center hover:border-indigo-600 hover:text-indigo-600 transition-all group disabled:opacity-60"
                                         >
-                                            <Calendar className="h-6 w-6 mb-2 group-hover:scale-110 transition-transform text-indigo-600" />
+                                            <Calendar className="h-5 w-5 mb-1 group-hover:scale-110 transition-transform text-indigo-600" />
                                             <span className="text-xs font-bold">Schedule</span>
                                         </button>
                                         <button
                                             onClick={handleSaveDraft}
                                             disabled={isSavingPost}
-                                            className="p-4 bg-white border border-gray-200 rounded-xl flex flex-col items-center justify-center hover:border-green-600 hover:text-green-600 transition-all group disabled:opacity-60"
+                                            className="p-3 bg-white border border-gray-200 rounded-xl flex flex-col items-center justify-center hover:border-green-600 hover:text-green-600 transition-all group disabled:opacity-60"
                                         >
-                                            <CheckCircle2 className="h-6 w-6 mb-2 group-hover:scale-110 transition-transform text-green-600" />
+                                            <CheckCircle2 className="h-5 w-5 mb-1 group-hover:scale-110 transition-transform text-green-600" />
                                             <span className="text-xs font-bold">Save Draft</span>
+                                        </button>
+                                        <button
+                                            onClick={generatePdf}
+                                            disabled={isGeneratingPdf}
+                                            className="p-3 bg-white border border-gray-200 rounded-xl flex flex-col items-center justify-center hover:border-gray-400 transition-all group disabled:opacity-60"
+                                        >
+                                            {isGeneratingPdf ? <Loader2 className="h-5 w-5 animate-spin" /> : <Download className="h-5 w-5 mb-1 group-hover:scale-110 transition-transform" />}
+                                            <span className="text-xs font-bold">Download PDF</span>
                                         </button>
                                     </div>
                                 </div>

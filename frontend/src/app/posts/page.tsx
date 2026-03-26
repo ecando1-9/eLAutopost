@@ -13,9 +13,12 @@ import {
     Trash2,
     Send,
     Eye,
-    X
+    X,
+    ExternalLink,
+    AlertCircle
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { toast } from 'react-hot-toast';
 import AppShell from '@/components/AppShell';
 import LinkedInPreview from '@/components/LinkedInPreview';
 
@@ -146,12 +149,41 @@ export default function PostsPage() {
             }
 
             if (!response.ok) {
-                const text = await response.text();
-                throw new Error(text || `Failed to ${action} post`);
+                let errorMsg = `Failed to ${action} post`;
+                try {
+                    const errData = await response.json();
+                    errorMsg = errData.detail || errData.error || errorMsg;
+                } catch {
+                    const text = await response.text().catch(() => '');
+                    if (text) errorMsg = text;
+                }
+                toast.error(errorMsg);
+                throw new Error(errorMsg);
+            }
+
+            if (action === 'publish') {
+                // Check if result indicates failure vs success
+                const result = await response.json().catch(() => ({}));
+                if (result.status === 'failed') {
+                    const errMsg = result.error_message || 'LinkedIn rejected the post.';
+                    toast.error(`Publish failed: ${errMsg}`);
+                } else {
+                    const url = result.linkedin_url;
+                    toast.success(
+                        url
+                            ? `Posted to LinkedIn! View it here.`
+                            : 'Published to LinkedIn!',
+                        { duration: 5000 }
+                    );
+                }
+            } else if (action === 'schedule') {
+                toast.success('Post scheduled successfully!');
+            } else if (action === 'delete') {
+                toast.success('Post deleted.');
             }
 
             await fetchPosts();
-        } catch (error) {
+        } catch (error: any) {
             console.error(`Failed to ${action} post:`, error);
         } finally {
             setActionPostId(null);
