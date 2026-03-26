@@ -478,9 +478,23 @@ function CreateContentPageContent() {
         });
 
         if (!response.ok) {
-            const text = await response.text();
-            throw new Error(text || 'Failed to publish post');
+            let errMsg = 'Failed to publish post';
+            try {
+                const errData = await response.json();
+                errMsg = errData.detail || errData.error || errMsg;
+            } catch {
+                const text = await response.text().catch(() => '');
+                if (text) errMsg = text;
+            }
+            throw new Error(errMsg);
         }
+
+        // Backend returns HTTP 200 even on LinkedIn rejection — must check the payload
+        const result = await response.json().catch(() => ({}));
+        if (result.status === 'failed') {
+            throw new Error(result.error_message || 'LinkedIn rejected the post. Check your connection in Settings.');
+        }
+        return result;
     };
 
     const scheduleDraftPost = async (

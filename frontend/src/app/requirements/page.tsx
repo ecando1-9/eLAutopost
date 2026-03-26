@@ -108,9 +108,9 @@ export default function RequirementsPage() {
               {
                   label: 'AI Content Generation',
                   description:
-                      'OpenAI GPT-4o is used on the backend to generate post hooks, captions, and hashtags. This is configured by your admin.',
+                      'OpenAI GPT-4o powers all post hooks, captions, and hashtags. Ready to generate.',
                   status: 'ok',
-                  detail: 'AI service is operational. Ready to generate content.',
+                  detail: 'AI service is operational.',
               },
               {
                   label: 'Posting Schedule Configured',
@@ -394,31 +394,6 @@ export default function RequirementsPage() {
                     </div>
                 </div>
 
-                {/* Requirements Summary */}
-                <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-6">
-                    <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                        <Key className="h-5 w-5 text-amber-500" />
-                        Technical Requirements
-                    </h2>
-                    <div className="space-y-3 text-sm text-gray-700">
-                        {[
-                            { label: 'LinkedIn OAuth Credentials', note: 'Client ID & Secret configured by admin' },
-                            { label: 'OpenAI API Key', note: 'GPT-4o access for content generation' },
-                            { label: 'Supabase Database', note: 'Stores posts, schedules, user settings' },
-                            { label: 'Backend API (FastAPI)', note: 'Handles auth, scheduling, and LinkedIn API calls' },
-                            { label: 'Frontend (Next.js)', note: 'User interface deployed on Vercel' },
-                            { label: 'Cron Job / Scheduler', note: 'Runs every hour to process the posting queue' },
-                        ].map((item) => (
-                            <div key={item.label} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
-                                <CheckCircle2 className="h-4 w-4 text-emerald-500 mt-0.5 flex-shrink-0" />
-                                <div>
-                                    <p className="font-semibold text-gray-900">{item.label}</p>
-                                    <p className="text-xs text-gray-500">{item.note}</p>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
             </div>
         </AppShell>
     );

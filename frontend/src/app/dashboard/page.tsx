@@ -39,6 +39,8 @@ interface DashboardData {
         topic: string;
     } | null;
     recent_posts: any[];
+    total_posted?: number;
+    posted_today?: number;
 }
 
 export default function UserDashboard() {
@@ -223,9 +225,9 @@ export default function UserDashboard() {
                     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-sm text-gray-500">Posts Generated</p>
+                                <p className="text-sm text-gray-500">Total Posted</p>
                                 <p className="text-2xl font-bold text-gray-900 mt-1">
-                                    {data?.usage?.posts_generated || 0}
+                                    {data?.total_posted || 0}
                                 </p>
                             </div>
                             <div className="h-12 w-12 rounded-lg bg-blue-100 flex items-center justify-center">
@@ -237,9 +239,9 @@ export default function UserDashboard() {
                     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-sm text-gray-500">Posted to LinkedIn</p>
-                                <p className="text-2xl font-bold text-gray-900 mt-1">
-                                    {data?.usage?.linkedin_posts || 0}
+                                <p className="text-sm text-gray-500">Posted Today</p>
+                                <p className="text-2xl font-bold text-emerald-600 mt-1">
+                                    {data?.posted_today || 0}
                                 </p>
                             </div>
                             <div className="h-12 w-12 rounded-lg bg-purple-100 flex items-center justify-center">

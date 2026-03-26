@@ -171,7 +171,6 @@ export default function SettingsPage() {
     // Schedule settings
     const [isActive, setIsActive] = useState(false);
     const [daysOfWeek, setDaysOfWeek] = useState<Day[]>(['MON', 'WED', 'FRI']);
-    const [timeOfDay, setTimeOfDay] = useState('09:00');
     const [timezone, setTimezone] = useState('Asia/Kolkata');
     const [categories, setCategories] = useState<string[]>(['AI']);
     const [availableCategories, setAvailableCategories] = useState<string[]>(DEFAULT_CATEGORY_POOL);
@@ -179,6 +178,41 @@ export default function SettingsPage() {
     const [customCategory, setCustomCategory] = useState('');
     const [autoTopic, setAutoTopic] = useState(true);
     const [maxPostsPerDay, setMaxPostsPerDay] = useState(1);
+    // Individual time slots (one per post per day). timeOfDay = first slot for backward compat
+    const [slotTimes, setSlotTimes] = useState<string[]>(['09:00']);
+
+    // Keep timeOfDay as derived first slot for API (legacy field)
+    const timeOfDay = slotTimes[0] || '09:00';
+
+    const setSlotTime = (index: number, value: string) => {
+        setSlotTimes((prev) => {
+            const next = [...prev];
+            next[index] = value;
+            return next;
+        });
+    };
+
+    const adjustMaxPosts = (delta: number) => {
+        setMaxPostsPerDay((prev) => {
+            const next = Math.min(5, Math.max(1, prev + delta));
+            // Grow or shrink slotTimes to match
+            setSlotTimes((times) => {
+                if (next > times.length) {
+                    const extra: string[] = [];
+                    for (let i = times.length; i < next; i++) {
+                        // Auto-fill: add 3 hours past last slot
+                        const last = times[times.length - 1] || '09:00';
+                        const [hh, mm] = last.split(':').map(Number);
+                        const nextH = ((hh + 3) % 24).toString().padStart(2, '0');
+                        extra.push(`${nextH}:${mm.toString().padStart(2, '0')}`);
+                    }
+                    return [...times, ...extra];
+                }
+                return times.slice(0, next);
+            });
+            return next;
+        });
+    };
 
     const setupChecks = useMemo(
         () => [
@@ -300,10 +334,20 @@ export default function SettingsPage() {
                                 ? schedule.days_of_week
                                 : ['MON', 'WED', 'FRI']
                         );
-                        if (typeof schedule.time_of_day === 'string' && schedule.time_of_day.length >= 5) {
-                            setTimeOfDay(schedule.time_of_day.slice(0, 5));
-                        }
                         setTimezone(schedule.timezone || 'Asia/Kolkata');
+                        // Build slot times: use time_of_day as first slot
+                        const firstSlot =
+                            typeof schedule.time_of_day === 'string' && schedule.time_of_day.length >= 5
+                                ? schedule.time_of_day.slice(0, 5)
+                                : '09:00';
+                        const postsPerDay = maxPostsPerDay;
+                        const builtSlots: string[] = [firstSlot];
+                        for (let i = 1; i < postsPerDay; i++) {
+                            const [hh, mm] = builtSlots[i - 1].split(':').map(Number);
+                            const nextH = ((hh + 3) % 24).toString().padStart(2, '0');
+                            builtSlots.push(`${nextH}:${mm.toString().padStart(2, '0')}`);
+                        }
+                        setSlotTimes(builtSlots);
                         const loadedCategories =
                             Array.isArray(schedule.categories) && schedule.categories.length > 0
                                 ? schedule.categories
@@ -628,9 +672,13 @@ export default function SettingsPage() {
                                             ))}
                                         </div>
                                     ) : (
-                                        <p className="text-xs text-slate-600">
-                                            No pages returned by LinkedIn API for this account. You can still enter a Page ID manually below.
-                                        </p>
+                                        <div className="rounded-lg bg-sky-50 border border-sky-100 p-3">
+                                            <p className="text-xs text-sky-800 font-semibold mb-0.5">No LinkedIn Pages linked to this account</p>
+                                            <p className="text-xs text-sky-700">
+                                                This is normal if you only post to your personal profile (most users). 
+                                                If you manage a Company Page, enter its numeric ID below.
+                                            </p>
+                                        </div>
                                     )}
 
                                     {linkedinScopes.length > 0 && (
@@ -696,60 +744,66 @@ export default function SettingsPage() {
                             ))}
                         </div>
 
-                        <div className="grid gap-4 sm:grid-cols-2 mb-4">
-                            <div>
-                                <label className="block text-sm font-semibold text-slate-800 mb-2">
-                                    <Clock3 className="inline h-4 w-4 mr-1 text-slate-500" />
-                                    Posting time
-                                </label>
-                                <input
-                                    type="time"
-                                    value={timeOfDay}
-                                    onChange={(event) => setTimeOfDay(event.target.value)}
-                                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-semibold text-slate-800 mb-2">
-                                    <Globe2 className="inline h-4 w-4 mr-1 text-slate-500" />
-                                    Timezone
-                                </label>
-                                <select
-                                    value={timezone}
-                                    onChange={(event) => setTimezone(event.target.value)}
-                                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-                                >
-                                    {TIMEZONES.map((zone) => (
-                                        <option key={zone} value={zone}>
-                                            {zone}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                        </div>
-
-                        {/* Posts Per Day */}
+                        {/* Timezone row */}
                         <div className="mb-4">
                             <label className="block text-sm font-semibold text-slate-800 mb-2">
-                                Posts per day: <span className="text-sky-700 font-bold">{maxPostsPerDay}</span>
+                                <Globe2 className="inline h-4 w-4 mr-1 text-slate-500" />
+                                Timezone
                             </label>
-                            <input
-                                type="range"
-                                min={1}
-                                max={5}
-                                step={1}
-                                value={maxPostsPerDay}
-                                onChange={(e) => setMaxPostsPerDay(Number(e.target.value))}
-                                className="w-full accent-sky-600"
-                            />
-                            <div className="flex justify-between text-[11px] text-slate-400 mt-1">
-                                {[1, 2, 3, 4, 5].map((n) => (
-                                    <span key={n}>{n}</span>
+                            <select
+                                value={timezone}
+                                onChange={(event) => setTimezone(event.target.value)}
+                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                            >
+                                {TIMEZONES.map((zone) => (
+                                    <option key={zone} value={zone}>
+                                        {zone}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {/* Posts Per Day + Per-Slot Times */}
+                        <div className="mb-4">
+                            <div className="flex items-center justify-between mb-3">
+                                <label className="block text-sm font-semibold text-slate-800">
+                                    Posts per day
+                                </label>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => adjustMaxPosts(-1)}
+                                        disabled={maxPostsPerDay <= 1}
+                                        className="h-7 w-7 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 disabled:opacity-40 flex items-center justify-center font-bold"
+                                    >−</button>
+                                    <span className="text-sky-700 font-bold w-5 text-center">{maxPostsPerDay}</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => adjustMaxPosts(1)}
+                                        disabled={maxPostsPerDay >= 5}
+                                        className="h-7 w-7 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 disabled:opacity-40 flex items-center justify-center font-bold"
+                                    >+</button>
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                {slotTimes.map((slotTime, idx) => (
+                                    <div key={idx} className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                                        <Clock3 className="h-4 w-4 text-sky-600 flex-shrink-0" />
+                                        <span className="text-xs font-semibold text-slate-600 w-20">
+                                            Post {idx + 1}
+                                        </span>
+                                        <input
+                                            type="time"
+                                            value={slotTime}
+                                            onChange={(e) => setSlotTime(idx, e.target.value)}
+                                            className="flex-1 rounded-md border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 bg-white"
+                                        />
+                                    </div>
                                 ))}
                             </div>
-                            <p className="text-xs text-slate-500 mt-1">
-                                Auto-generator will schedule up to {maxPostsPerDay} post{maxPostsPerDay > 1 ? 's' : ''} per active day,
-                                spread evenly from your posting time ({timeOfDay}).
+                            <p className="text-xs text-slate-400 mt-2">
+                                Set the exact time for each post. The system will auto-generate content at these times on your selected days.
                             </p>
                         </div>
 

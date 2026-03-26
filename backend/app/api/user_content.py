@@ -287,6 +287,27 @@ async def get_user_dashboard(
                 "api_calls": 0,
             }
 
+        # Get actual post stats for the dashboard showing total and today
+        now = utc_now()
+        start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        try:
+            # Total posted
+            total_posted_res = supabase_client.admin.table("posts").select(
+                "id", count="exact"
+            ).eq("user_id", user_id).eq("status", "posted").execute()
+            total_posted = total_posted_res.count if hasattr(total_posted_res, 'count') and total_posted_res.count is not None else (len(total_posted_res.data) if getattr(total_posted_res, 'data', None) is not None else 0)
+            
+            # Posted today
+            today_posted_res = supabase_client.admin.table("posts").select(
+                "id", count="exact"
+            ).eq("user_id", user_id).eq("status", "posted").gte("posted_at", start_of_day.isoformat()).execute()
+            posted_today = today_posted_res.count if hasattr(today_posted_res, 'count') and today_posted_res.count is not None else (len(today_posted_res.data) if getattr(today_posted_res, 'data', None) is not None else 0)
+        except Exception as e:
+            logger.error(f"Failed to fetch real-time post stats: {e}")
+            total_posted = usage.get("linkedin_posts", 0)
+            posted_today = 0
+
         # Get schedule
         schedule = await scheduler_service.get_user_schedule(user_id)
 
@@ -343,7 +364,9 @@ async def get_user_dashboard(
             "usage": usage,
             "schedule": schedule,
             "next_post": next_post,
-            "recent_posts": recent_posts
+            "recent_posts": recent_posts,
+            "total_posted": total_posted,
+            "posted_today": posted_today
         }
         
     except Exception as e:
