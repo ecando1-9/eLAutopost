@@ -436,9 +436,6 @@ class LinkedInService:
         if not clean_id:
             return ""
 
-        if clean_id.startswith("urn:li:"):
-            clean_id = clean_id.split(":")[-1]
-
         return f"https://www.linkedin.com/feed/update/{clean_id}"
 
     async def _get_person_urn(self, access_token: str) -> str:
