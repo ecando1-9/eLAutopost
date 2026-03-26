@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState, useEffect } from 'react';
+import { Suspense, useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -22,10 +22,17 @@ import {
     Copy,
     Check,
     ChevronRight,
-    RefreshCw
+    RefreshCw,
+    Eye,
+    Sliders,
+    Languages,
+    AlignLeft,
+    Hash
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import AppShell from '@/components/AppShell';
+import EmojiPicker from '@/components/EmojiPicker';
+import LinkedInPreview from '@/components/LinkedInPreview';
 
 // Define Step Types
 type Step = 1 | 2 | 3 | 4 | 5;
@@ -38,6 +45,11 @@ interface FormData {
     style: string;
     instructions: string;
     tone: string;
+    postLength: 'short' | 'medium' | 'long';
+    language: string;
+    includeEmojis: boolean;
+    includeHashtags: boolean;
+    numberOfHashtags: number;
 }
 
 type PublishTarget = 'person' | 'organization' | 'both';
@@ -50,6 +62,17 @@ interface LocalPreferences {
     targetMode?: PublishTarget;
     organizationId?: string;
 }
+
+const POST_LENGTHS = [
+    { id: 'short', label: 'Short', desc: '< 150 words · Punchy & direct' },
+    { id: 'medium', label: 'Medium', desc: '150–300 words · Balanced' },
+    { id: 'long', label: 'Long', desc: '300–500 words · In-depth' },
+];
+
+const LANGUAGES = [
+    'English', 'Hindi', 'Spanish', 'French', 'German',
+    'Portuguese', 'Italian', 'Dutch', 'Arabic', 'Japanese',
+];
 
 // Wizard Options
 const goals = [
@@ -117,8 +140,19 @@ function CreateContentPageContent() {
         audience: 'General Professionals',
         style: 'Carousel slides',
         instructions: '',
-        tone: 'Professional'
+        tone: 'Professional',
+        postLength: 'medium',
+        language: 'English',
+        includeEmojis: true,
+        includeHashtags: true,
+        numberOfHashtags: 5,
     });
+
+    // Preview & editing state
+    const [showPreview, setShowPreview] = useState(false);
+    const [editableCaption, setEditableCaption] = useState('');
+    const captionRef = useRef<HTMLTextAreaElement>(null);
+    const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
     
     // Results State
     const [result, setResult] = useState<any>(null);
@@ -132,6 +166,7 @@ function CreateContentPageContent() {
         const tzOffsetMs = base.getTimezoneOffset() * 60000;
         return new Date(base.getTime() - tzOffsetMs).toISOString().slice(0, 16);
     });
+    const [userScheduleInfo, setUserScheduleInfo] = useState<{ time: string; days: string[]; postsPerDay: number } | null>(null);
 
     // Template/Theme Data
     const templates = [
@@ -196,14 +231,37 @@ function CreateContentPageContent() {
     useEffect(() => {
         const loadBackendDefaults = async () => {
             try {
-                const response = await fetch('/api/v1/settings', { cache: 'no-store' });
-                if (!response.ok) return;
-                const settings = await response.json();
-                if (settings.default_tone) {
-                    const normalizedTone =
-                        String(settings.default_tone).charAt(0).toUpperCase() +
-                        String(settings.default_tone).slice(1).toLowerCase();
-                    setFormData((prev) => ({ ...prev, tone: normalizedTone }));
+                const [settingsRes, scheduleRes] = await Promise.all([
+                    fetch('/api/v1/settings', { cache: 'no-store' }),
+                    fetch('/api/v1/user/schedule', { cache: 'no-store' }),
+                ]);
+
+                if (settingsRes.ok) {
+                    const settings = await settingsRes.json();
+                    if (settings.default_tone) {
+                        const normalizedTone =
+                            String(settings.default_tone).charAt(0).toUpperCase() +
+                            String(settings.default_tone).slice(1).toLowerCase();
+                        setFormData((prev) => ({ ...prev, tone: normalizedTone }));
+                    }
+                }
+
+                if (scheduleRes.ok) {
+                    const payload = await scheduleRes.json();
+                    const schedule = payload.schedule;
+                    if (schedule && schedule.time_of_day) {
+                        // Pre-fill schedule time from user settings
+                        const [hh, mm] = schedule.time_of_day.slice(0, 5).split(':');
+                        const nextDay = new Date();
+                        nextDay.setDate(nextDay.getDate() + 1);
+                        nextDay.setHours(parseInt(hh), parseInt(mm), 0, 0);
+                        const tzOffsetMs = nextDay.getTimezoneOffset() * 60000;
+                        setScheduledAt(new Date(nextDay.getTime() - tzOffsetMs).toISOString().slice(0, 16));
+
+                        const days = schedule.days_of_week || [];
+                        const maxPerDay = schedule.max_posts_per_day || 3;
+                        setUserScheduleInfo({ time: schedule.time_of_day.slice(0, 5), days, postsPerDay: maxPerDay });
+                    }
                 }
             } catch (error) {
                 console.error('Failed to load backend defaults:', error);
@@ -244,7 +302,13 @@ function CreateContentPageContent() {
                     audience: formData.audience,
                     style: formData.style,
                     tone: formData.tone.toLowerCase(),
-                    instructions: formData.instructions
+                    instructions: [
+                        formData.instructions,
+                        `Post length: ${formData.postLength}`,
+                        `Language: ${formData.language}`,
+                        formData.includeEmojis ? 'Include relevant emojis in the post' : 'Do NOT use any emojis',
+                        formData.includeHashtags ? `Include ${formData.numberOfHashtags} relevant hashtags` : 'Do NOT include hashtags',
+                    ].filter(Boolean).join('. ')
                 })
             });
 
@@ -252,6 +316,7 @@ function CreateContentPageContent() {
             
             const data = await response.json();
             setResult(data);
+            setEditableCaption(data.caption || '');
             setCurrentStep(5);
             toast.success('Content Strategist has prepared your post!');
         } catch (err: any) {
@@ -327,16 +392,37 @@ function CreateContentPageContent() {
             ? `\n\n${result.hashtags.map((h: string) => `#${String(h).replace(/^#/, '')}`).join(' ')}`
             : '';
 
+        // Use the editable caption if user modified it
+        const finalCaption = editableCaption || result.caption || '';
+
         return {
             topic: formData.topic,
             hook: result.hook || 'LinkedIn update',
             image_prompt: result.image_prompt || `Professional LinkedIn visual for ${formData.topic}`,
-            caption: `${result.caption || ''}${cta}${hashtags}`.trim(),
+            caption: `${finalCaption}${cta}${hashtags}`.trim(),
             content_type: contentType,
             image_url: null,
             target: targetMode === 'organization' ? 'organization' : 'person',
             organization_id: organizationId || null
         };
+    };
+
+    // Emoji insert helper
+    const insertEmojiIntoCaption = (emoji: string) => {
+        const textarea = captionRef.current;
+        if (!textarea) {
+            setEditableCaption((prev) => prev + emoji);
+            return;
+        }
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const newCaption = editableCaption.slice(0, start) + emoji + editableCaption.slice(end);
+        setEditableCaption(newCaption);
+        // Restore cursor
+        requestAnimationFrame(() => {
+            textarea.selectionStart = textarea.selectionEnd = start + emoji.length;
+            textarea.focus();
+        });
     };
 
     const createDraftPost = async (
@@ -688,7 +774,7 @@ function CreateContentPageContent() {
                                 </div>
 
                                 <div className="space-y-2">
-                                    <label className="text-sm font-semibold text-gray-700 text-gray-700">Custom Instructions (Optional)</label>
+                                    <label className="text-sm font-semibold text-gray-700">Custom Instructions (Optional)</label>
                                     <textarea 
                                         rows={3}
                                         placeholder="e.g. Focus on cybersecurity risks for small startups..."
@@ -696,6 +782,116 @@ function CreateContentPageContent() {
                                         value={formData.instructions}
                                         onChange={(e) => setFormData({...formData, instructions: e.target.value})}
                                     />
+                                </div>
+
+                                {/* Advanced Options Toggle */}
+                                <div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowAdvancedOptions(!showAdvancedOptions)}
+                                        className="flex items-center gap-2 text-sm font-semibold text-indigo-600 hover:text-indigo-700 transition-colors"
+                                    >
+                                        <Sliders className="h-4 w-4" />
+                                        {showAdvancedOptions ? 'Hide Advanced Options' : 'Show Advanced Options'}
+                                    </button>
+
+                                    <AnimatePresence>
+                                        {showAdvancedOptions && (
+                                            <motion.div
+                                                initial={{ opacity: 0, height: 0 }}
+                                                animate={{ opacity: 1, height: 'auto' }}
+                                                exit={{ opacity: 0, height: 0 }}
+                                                className="overflow-hidden"
+                                            >
+                                                <div className="mt-4 space-y-5 pt-4 border-t border-gray-100">
+                                                    {/* Post Length */}
+                                                    <div className="space-y-2">
+                                                        <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                                                            <AlignLeft className="h-4 w-4 text-gray-400" />
+                                                            Post Length
+                                                        </label>
+                                                        <div className="grid grid-cols-3 gap-2">
+                                                            {POST_LENGTHS.map((pl) => (
+                                                                <button
+                                                                    key={pl.id}
+                                                                    type="button"
+                                                                    onClick={() => setFormData({ ...formData, postLength: pl.id as any })}
+                                                                    className={`p-3 rounded-xl border-2 text-left transition-all ${
+                                                                        formData.postLength === pl.id
+                                                                            ? 'border-indigo-600 bg-indigo-50'
+                                                                            : 'border-gray-200 hover:border-indigo-200'
+                                                                    }`}
+                                                                >
+                                                                    <p className={`text-sm font-bold ${formData.postLength === pl.id ? 'text-indigo-900' : 'text-gray-800'}`}>
+                                                                        {pl.label}
+                                                                    </p>
+                                                                    <p className="text-xs text-gray-500 mt-0.5">{pl.desc}</p>
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Language */}
+                                                    <div className="space-y-2">
+                                                        <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                                                            <Languages className="h-4 w-4 text-gray-400" />
+                                                            Language
+                                                        </label>
+                                                        <select
+                                                            value={formData.language}
+                                                            onChange={(e) => setFormData({ ...formData, language: e.target.value })}
+                                                            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-600 outline-none text-sm"
+                                                        >
+                                                            {LANGUAGES.map((lang) => (
+                                                                <option key={lang} value={lang}>{lang}</option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+
+                                                    {/* Emojis & Hashtags */}
+                                                    <div className="grid grid-cols-2 gap-3">
+                                                        <div
+                                                            onClick={() => setFormData({ ...formData, includeEmojis: !formData.includeEmojis })}
+                                                            className={`cursor-pointer p-3 rounded-xl border-2 transition-all ${
+                                                                formData.includeEmojis ? 'border-indigo-600 bg-indigo-50' : 'border-gray-200'
+                                                            }`}
+                                                        >
+                                                            <p className="text-lg">😊</p>
+                                                            <p className="text-sm font-semibold text-gray-800 mt-1">Use Emojis</p>
+                                                            <p className="text-xs text-gray-500">{formData.includeEmojis ? 'Enabled' : 'Disabled'}</p>
+                                                        </div>
+                                                        <div
+                                                            onClick={() => setFormData({ ...formData, includeHashtags: !formData.includeHashtags })}
+                                                            className={`cursor-pointer p-3 rounded-xl border-2 transition-all ${
+                                                                formData.includeHashtags ? 'border-indigo-600 bg-indigo-50' : 'border-gray-200'
+                                                            }`}
+                                                        >
+                                                            <Hash className="h-5 w-5 text-gray-600" />
+                                                            <p className="text-sm font-semibold text-gray-800 mt-1">Hashtags</p>
+                                                            <p className="text-xs text-gray-500">{formData.includeHashtags ? 'Enabled' : 'Disabled'}</p>
+                                                        </div>
+                                                    </div>
+
+                                                    {formData.includeHashtags && (
+                                                        <div className="space-y-2">
+                                                            <label className="text-sm font-semibold text-gray-700">Number of Hashtags: {formData.numberOfHashtags}</label>
+                                                            <input
+                                                                type="range"
+                                                                min={2}
+                                                                max={15}
+                                                                value={formData.numberOfHashtags}
+                                                                onChange={(e) => setFormData({ ...formData, numberOfHashtags: parseInt(e.target.value) })}
+                                                                className="w-full accent-indigo-600"
+                                                            />
+                                                            <div className="flex justify-between text-xs text-gray-400">
+                                                                <span>2</span><span>15</span>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </motion.div>
+                                        )}
+                                    </AnimatePresence>
                                 </div>
 
                                 <button
@@ -733,17 +929,25 @@ function CreateContentPageContent() {
                             animate={{ opacity: 1, y: 0 }}
                             className="space-y-8"
                         >
-                            <div className="flex items-center justify-between">
+                            <div className="flex items-center justify-between flex-wrap gap-3">
                                 <h2 className="text-2xl font-bold text-gray-900 flex items-center">
                                     <Sparkles className="h-6 w-6 text-indigo-600 mr-2" />
                                     Your Strategy is Ready
                                 </h2>
-                                <button 
-                                    onClick={() => setCurrentStep(1)}
-                                    className="text-sm text-indigo-600 font-semibold hover:text-indigo-700 flex items-center"
-                                >
-                                    <RefreshCw className="h-4 w-4 mr-1" /> Start New
-                                </button>
+                                <div className="flex items-center gap-3">
+                                    <button
+                                        onClick={() => setShowPreview(true)}
+                                        className="text-sm text-blue-600 font-semibold hover:text-blue-700 flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 transition-colors"
+                                    >
+                                        <Eye className="h-4 w-4" /> LinkedIn Preview
+                                    </button>
+                                    <button 
+                                        onClick={() => { setCurrentStep(1); setResult(null); setEditableCaption(''); }}
+                                        className="text-sm text-indigo-600 font-semibold hover:text-indigo-700 flex items-center"
+                                    >
+                                        <RefreshCw className="h-4 w-4 mr-1" /> Start New
+                                    </button>
+                                </div>
                             </div>
 
                             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -760,16 +964,24 @@ function CreateContentPageContent() {
                                         <div className="space-y-4 border-t border-gray-100 pt-6">
                                             <div className="flex items-center justify-between">
                                                 <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">LinkedIn Caption</h3>
-                                                <button 
-                                                    onClick={() => copyToClipboard(result.caption + "\n\n" + result.cta + "\n\n" + result.hashtags.join(' '))}
-                                                    className="p-2 hover:bg-gray-100 rounded-lg text-indigo-600 transition-colors"
-                                                >
-                                                    {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                                                </button>
+                                                <div className="flex items-center gap-1">
+                                                    <EmojiPicker onSelect={insertEmojiIntoCaption} />
+                                                    <button 
+                                                        onClick={() => copyToClipboard(editableCaption + "\n\n" + result.cta + "\n\n" + result.hashtags.join(' '))}
+                                                        className="p-2 hover:bg-gray-100 rounded-lg text-indigo-600 transition-colors"
+                                                    >
+                                                        {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                                                    </button>
+                                                </div>
                                             </div>
-                                            <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">
-                                                {result.caption}
-                                            </p>
+                                            <textarea
+                                                ref={captionRef}
+                                                rows={8}
+                                                value={editableCaption}
+                                                onChange={(e) => setEditableCaption(e.target.value)}
+                                                className="w-full text-gray-700 leading-relaxed resize-none border border-gray-200 rounded-xl p-3 focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                                                placeholder="Edit your caption here..."
+                                            />
                                             <p className="font-bold text-indigo-600 italic">
                                                 {result.cta}
                                             </p>
@@ -832,9 +1044,16 @@ function CreateContentPageContent() {
                                                 onChange={(e) => setScheduledAt(e.target.value)}
                                                 className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-indigo-600 outline-none"
                                             />
-                                            <p className="text-xs text-gray-500 mt-1">
-                                                Default is tomorrow 09:00, you can change this.
-                                            </p>
+                                            {userScheduleInfo ? (
+                                                <p className="text-xs text-indigo-600 mt-1 flex items-center gap-1">
+                                                    <Calendar className="h-3 w-3" />
+                                                    Pre-filled from your schedule: {userScheduleInfo.time} on {userScheduleInfo.days.join(', ')} · Max {userScheduleInfo.postsPerDay}/day
+                                                </p>
+                                            ) : (
+                                                <p className="text-xs text-gray-500 mt-1">
+                                                    Default is tomorrow 09:00. Set your schedule in Settings to auto-fill.
+                                                </p>
+                                            )}
                                         </div>
                                     </div>
 
@@ -914,6 +1133,17 @@ function CreateContentPageContent() {
                         </motion.div>
                     )}
                 </AnimatePresence>
+
+                {/* LinkedIn Preview Modal */}
+                {showPreview && result && (
+                    <LinkedInPreview
+                        hook={result.hook}
+                        caption={editableCaption || result.caption}
+                        cta={result.cta}
+                        hashtags={result.hashtags}
+                        onClose={() => setShowPreview(false)}
+                    />
+                )}
             </div>
 
             {/* Custom scrollbar styles */}

@@ -13,6 +13,7 @@ import {
     Menu,
     PenSquare,
     Settings,
+    ShieldCheck,
     X,
 } from 'lucide-react';
 
@@ -53,6 +54,7 @@ export default function AppShell({
             { href: '/calendar', label: 'Calendar', icon: CalendarDays },
             { href: '/posts', label: 'Queue', icon: ClipboardList },
             { href: '/settings', label: 'Settings', icon: Settings },
+            { href: '/requirements', label: 'Requirements', icon: ShieldCheck },
         ],
         []
     );
@@ -223,6 +225,9 @@ export default function AppShell({
                         </Link>
                         <Link href="/cookies" className="hover:text-slate-900">
                             Cookies
+                        </Link>
+                        <Link href="/requirements" className="hover:text-slate-900 flex items-center gap-1">
+                            <ShieldCheck className="h-3.5 w-3.5" /> Requirements
                         </Link>
                     </div>
                 </div>

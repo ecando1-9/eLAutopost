@@ -11,10 +11,13 @@ import {
     Loader2,
     Filter,
     Trash2,
-    Send
+    Send,
+    Eye,
+    X
 } from 'lucide-react';
 import { format } from 'date-fns';
 import AppShell from '@/components/AppShell';
+import LinkedInPreview from '@/components/LinkedInPreview';
 
 interface Post {
     id: string;
@@ -40,6 +43,15 @@ export default function PostsPage() {
     const [loading, setLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState<string>('all');
     const [actionPostId, setActionPostId] = useState<string | null>(null);
+    const [previewPost, setPreviewPost] = useState<Post | null>(null);
+    const [scheduleModal, setScheduleModal] = useState<Post | null>(null);
+    const [scheduleDate, setScheduleDate] = useState(() => {
+        const base = new Date();
+        base.setDate(base.getDate() + 1);
+        base.setHours(9, 0, 0, 0);
+        const tzOffsetMs = base.getTimezoneOffset() * 60000;
+        return new Date(base.getTime() - tzOffsetMs).toISOString().slice(0, 16);
+    });
 
     useEffect(() => {
         fetchPosts();
@@ -98,7 +110,8 @@ export default function PostsPage() {
     const runPostAction = async (
         postId: string,
         action: 'publish' | 'schedule' | 'delete',
-        post?: Post
+        post?: Post,
+        customScheduledAt?: string
     ) => {
         setActionPostId(postId);
         try {
@@ -114,7 +127,9 @@ export default function PostsPage() {
                     }),
                 });
             } else if (action === 'schedule') {
-                const scheduledAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+                const scheduledAt = customScheduledAt
+                    ? new Date(customScheduledAt).toISOString()
+                    : new Date(Date.now() + 60 * 60 * 1000).toISOString();
                 response = await fetch(`/api/v1/posts/${postId}/schedule`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -143,6 +158,12 @@ export default function PostsPage() {
         }
     };
 
+    const handleScheduleSubmit = async () => {
+        if (!scheduleModal) return;
+        await runPostAction(scheduleModal.id, 'schedule', scheduleModal, scheduleDate);
+        setScheduleModal(null);
+    };
+
     return (
         <AppShell
             title="Content Queue"
@@ -157,6 +178,57 @@ export default function PostsPage() {
             }
         >
             <div>
+                {/* Schedule Modal */}
+                {scheduleModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                                    <Calendar className="h-5 w-5 text-indigo-600" />
+                                    Schedule Post
+                                </h3>
+                                <button onClick={() => setScheduleModal(null)} className="p-1 rounded-lg hover:bg-gray-100 text-gray-500">
+                                    <X className="h-5 w-5" />
+                                </button>
+                            </div>
+                            <p className="text-sm text-gray-600 mb-1 font-medium">Topic: <span className="text-gray-900">{scheduleModal.topic}</span></p>
+                            <p className="text-sm text-gray-500 mb-4">Choose when to publish this post:</p>
+                            <label className="block text-sm font-semibold text-gray-700 mb-1">Date & Time</label>
+                            <input
+                                type="datetime-local"
+                                value={scheduleDate}
+                                onChange={(e) => setScheduleDate(e.target.value)}
+                                className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 outline-none text-sm mb-4"
+                            />
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => setScheduleModal(null)}
+                                    className="flex-1 py-2 rounded-lg border border-gray-200 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleScheduleSubmit}
+                                    disabled={actionPostId === scheduleModal.id}
+                                    className="flex-1 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-60 flex items-center justify-center gap-2"
+                                >
+                                    {actionPostId === scheduleModal.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Calendar className="h-4 w-4" />}
+                                    Confirm Schedule
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* LinkedIn Preview Modal */}
+                {previewPost && (
+                    <LinkedInPreview
+                        hook={previewPost.hook}
+                        caption={previewPost.caption}
+                        onClose={() => setPreviewPost(null)}
+                    />
+                )}
+
                 {/* Filters */}
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6">
                     <div className="flex items-center gap-2">
@@ -262,6 +334,13 @@ export default function PostsPage() {
 
                                 {/* Actions */}
                                 <div className="flex gap-2 pt-4 border-t border-gray-200">
+                                    <button
+                                        onClick={() => setPreviewPost(post)}
+                                        className="flex items-center gap-2 px-4 py-2 text-sm bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 transition-colors"
+                                    >
+                                        <Eye className="h-4 w-4" />
+                                        Preview
+                                    </button>
                                     {(post.status === 'draft' || post.status === 'failed') && (
                                         <button
                                             onClick={() => runPostAction(post.id, 'publish', post)}
@@ -274,7 +353,7 @@ export default function PostsPage() {
                                     )}
                                     {(post.status === 'draft' || post.status === 'failed') && (
                                         <button
-                                            onClick={() => runPostAction(post.id, 'schedule', post)}
+                                            onClick={() => setScheduleModal(post)}
                                             disabled={actionPostId === post.id}
                                             className="flex items-center gap-2 px-4 py-2 text-sm bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-60"
                                         >
