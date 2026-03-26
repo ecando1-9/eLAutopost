@@ -794,34 +794,19 @@ export default function SettingsPage() {
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+                            <div className="flex flex-wrap gap-3">
                                 {slotTimes.map((slotTime, idx) => (
-                                    <div key={idx} className="flex flex-col gap-1.5">
+                                    <div key={idx} className="flex flex-col gap-1.5 w-full sm:w-auto sm:min-w-[130px]">
                                         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider pl-1">
                                             Post {idx + 1}
                                         </span>
-                                        <div className="relative flex items-center rounded-lg border border-slate-200 bg-white px-2.5 py-2 shadow-sm focus-within:ring-2 focus-within:ring-sky-500 focus-within:border-sky-500 transition-all">
-                                            <select
+                                        <div className="flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm focus-within:ring-2 focus-within:ring-sky-500 focus-within:border-sky-500 transition-all">
+                                            <input
+                                                type="time"
                                                 value={slotTime}
                                                 onChange={(e) => setSlotTime(idx, e.target.value)}
-                                                className="w-full bg-transparent text-sm font-semibold text-slate-800 outline-none hover:cursor-pointer cursor-pointer appearance-none pr-6"
-                                            >
-                                                {Array.from({ length: 48 }).map((_, i) => {
-                                                    const h = Math.floor(i / 2).toString().padStart(2, '0');
-                                                    const m = i % 2 === 0 ? '00' : '30';
-                                                    const val = `${h}:${m}`;
-                                                    const hour12 = h === '00' ? 12 : (parseInt(h) > 12 ? parseInt(h) - 12 : parseInt(h));
-                                                    const ampm = parseInt(h) >= 12 ? 'PM' : 'AM';
-                                                    return (
-                                                        <option key={val} value={val}>
-                                                            {`${hour12}:${m} ${ampm}`}
-                                                        </option>
-                                                    );
-                                                })}
-                                            </select>
-                                            <svg className="w-4 h-4 text-sky-500 pointer-events-none absolute right-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
-                                            </svg>
+                                                className="w-full bg-transparent text-sm font-semibold text-slate-800 outline-none hover:cursor-pointer [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:text-sky-600 [&::-webkit-calendar-picker-indicator]:opacity-70 hover:[&::-webkit-calendar-picker-indicator]:opacity-100"
+                                            />
                                         </div>
                                     </div>
                                 ))}
