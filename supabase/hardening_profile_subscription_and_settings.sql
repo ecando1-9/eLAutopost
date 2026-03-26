@@ -14,7 +14,7 @@ ALTER TABLE public.settings
     ADD COLUMN IF NOT EXISTS default_style VARCHAR(120) DEFAULT 'Carousel slides',
     ADD COLUMN IF NOT EXISTS publish_target VARCHAR(20) DEFAULT 'person',
     ADD COLUMN IF NOT EXISTS organization_id VARCHAR(64),
-    ADD COLUMN IF NOT EXISTS max_posts_per_day INTEGER DEFAULT 3;
+    ADD COLUMN IF NOT EXISTS max_posts_per_day INTEGER DEFAULT 1;
 
 UPDATE public.settings
 SET
@@ -26,7 +26,7 @@ SET
         ELSE 'person'
     END,
     max_posts_per_day = CASE
-        WHEN max_posts_per_day IS NULL OR max_posts_per_day < 1 THEN 3
+        WHEN max_posts_per_day IS NULL OR max_posts_per_day < 1 THEN 1
         WHEN max_posts_per_day > 10 THEN 10
         ELSE max_posts_per_day
     END;

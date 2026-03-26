@@ -64,7 +64,7 @@ async def get_settings(
             default_style=settings_data.get("default_style", "Carousel slides"),
             publish_target=settings_data.get("publish_target", "person"),
             organization_id=settings_data.get("organization_id"),
-            max_posts_per_day=settings_data.get("max_posts_per_day", 3),
+            max_posts_per_day=settings_data.get("max_posts_per_day", 1),
         )
         
     except Exception as e:
@@ -168,7 +168,7 @@ async def update_settings(
             default_style=updated_settings.get("default_style", "Carousel slides"),
             publish_target=updated_settings.get("publish_target", "person"),
             organization_id=updated_settings.get("organization_id"),
-            max_posts_per_day=updated_settings.get("max_posts_per_day", 3),
+            max_posts_per_day=updated_settings.get("max_posts_per_day", 1),
         )
         
     except HTTPException:
@@ -207,7 +207,7 @@ async def reset_settings(
             "default_style": "Carousel slides",
             "publish_target": "person",
             "organization_id": None,
-            "max_posts_per_day": 3,
+            "max_posts_per_day": 1,
         }
         
         await update_user_settings(user_id, default_settings)

@@ -261,7 +261,7 @@ function CreateContentPageContent() {
                         setScheduledAt(new Date(nextDay.getTime() - tzOffsetMs).toISOString().slice(0, 16));
 
                         const days = schedule.days_of_week || [];
-                        const maxPerDay = schedule.max_posts_per_day || 3;
+                        const maxPerDay = schedule.max_posts_per_day || 1;
                         setUserScheduleInfo({ time: schedule.time_of_day.slice(0, 5), days, postsPerDay: maxPerDay });
                     }
                 }

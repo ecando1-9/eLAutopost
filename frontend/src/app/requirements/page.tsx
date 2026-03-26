@@ -72,7 +72,7 @@ export default function RequirementsPage() {
                 posts_count: posts.filter((p: any) => p.status === 'posted').length,
                 queued_posts: posts.filter((p: any) => p.status === 'scheduled' || p.status === 'draft').length,
                 timezone: schedule.timezone || settings.timezone || 'Not set',
-                max_posts_per_day: settings.max_posts_per_day || 3,
+                max_posts_per_day: settings.max_posts_per_day || 1,
             });
         } catch (e) {
             console.error('Failed to load diagnostics:', e);

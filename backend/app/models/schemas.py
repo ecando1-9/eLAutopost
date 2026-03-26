@@ -308,7 +308,7 @@ class UserSettings(BaseModel):
     default_style: str = Field(default="Carousel slides", max_length=120)
     publish_target: str = Field(default="person", pattern="^(person|organization|both)$")
     organization_id: Optional[str] = Field(default=None, max_length=64)
-    max_posts_per_day: int = Field(default=3, ge=1, le=10, description="Max posts per day")
+    max_posts_per_day: int = Field(default=1, ge=1, le=10, description="Max posts per day")
     
     @validator("default_tone", "default_goal", "default_audience", "default_style")
     def sanitize_settings_text(cls, v):

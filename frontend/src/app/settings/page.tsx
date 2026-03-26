@@ -199,12 +199,12 @@ export default function SettingsPage() {
             setSlotTimes((times) => {
                 if (next > times.length) {
                     const extra: string[] = [];
+                    let currentLast = times[times.length - 1] || '09:00';
                     for (let i = times.length; i < next; i++) {
-                        // Auto-fill: add 3 hours past last slot
-                        const last = times[times.length - 1] || '09:00';
-                        const [hh, mm] = last.split(':').map(Number);
+                        const [hh, mm] = currentLast.split(':').map(Number);
                         const nextH = ((hh + 3) % 24).toString().padStart(2, '0');
-                        extra.push(`${nextH}:${mm.toString().padStart(2, '0')}`);
+                        currentLast = `${nextH}:${mm.toString().padStart(2, '0')}`;
+                        extra.push(currentLast);
                     }
                     return [...times, ...extra];
                 }
@@ -305,6 +305,8 @@ export default function SettingsPage() {
                     setIsLinkedInConnected(Boolean(profile.linkedin_connected));
                 }
 
+                let fetchedMaxPosts = maxPostsPerDay;
+
                 if (settingsRes.ok) {
                     const settings: SettingsResponse = await settingsRes.json();
                     setDefaultTone(settings.default_tone || 'professional');
@@ -320,7 +322,8 @@ export default function SettingsPage() {
                     if (settings.publish_target) setTargetMode(settings.publish_target);
                     if (settings.organization_id) setOrganizationId(settings.organization_id);
                     if (typeof settings.max_posts_per_day === 'number') {
-                        setMaxPostsPerDay(Math.min(5, Math.max(1, settings.max_posts_per_day)));
+                        fetchedMaxPosts = Math.min(5, Math.max(1, settings.max_posts_per_day));
+                        setMaxPostsPerDay(fetchedMaxPosts);
                     }
                 }
 
@@ -335,14 +338,14 @@ export default function SettingsPage() {
                                 : ['MON', 'WED', 'FRI']
                         );
                         setTimezone(schedule.timezone || 'Asia/Kolkata');
-                        // Build slot times: use time_of_day as first slot
+                        
                         const firstSlot =
                             typeof schedule.time_of_day === 'string' && schedule.time_of_day.length >= 5
                                 ? schedule.time_of_day.slice(0, 5)
                                 : '09:00';
-                        const postsPerDay = maxPostsPerDay;
+                        
                         const builtSlots: string[] = [firstSlot];
-                        for (let i = 1; i < postsPerDay; i++) {
+                        for (let i = 1; i < fetchedMaxPosts; i++) {
                             const [hh, mm] = builtSlots[i - 1].split(':').map(Number);
                             const nextH = ((hh + 3) % 24).toString().padStart(2, '0');
                             builtSlots.push(`${nextH}:${mm.toString().padStart(2, '0')}`);
@@ -797,13 +800,28 @@ export default function SettingsPage() {
                                         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider pl-1">
                                             Post {idx + 1}
                                         </span>
-                                        <div className="flex items-center rounded-lg border border-slate-200 bg-white px-2.5 py-2 shadow-sm focus-within:ring-2 focus-within:ring-sky-500 focus-within:border-sky-500 transition-all">
-                                            <input
-                                                type="time"
+                                        <div className="relative flex items-center rounded-lg border border-slate-200 bg-white px-2.5 py-2 shadow-sm focus-within:ring-2 focus-within:ring-sky-500 focus-within:border-sky-500 transition-all">
+                                            <select
                                                 value={slotTime}
                                                 onChange={(e) => setSlotTime(idx, e.target.value)}
-                                                className="w-full bg-transparent text-sm font-semibold text-slate-800 outline-none hover:cursor-pointer [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-60 hover:[&::-webkit-calendar-picker-indicator]:opacity-100"
-                                            />
+                                                className="w-full bg-transparent text-sm font-semibold text-slate-800 outline-none hover:cursor-pointer cursor-pointer appearance-none pr-6"
+                                            >
+                                                {Array.from({ length: 48 }).map((_, i) => {
+                                                    const h = Math.floor(i / 2).toString().padStart(2, '0');
+                                                    const m = i % 2 === 0 ? '00' : '30';
+                                                    const val = `${h}:${m}`;
+                                                    const hour12 = h === '00' ? 12 : (parseInt(h) > 12 ? parseInt(h) - 12 : parseInt(h));
+                                                    const ampm = parseInt(h) >= 12 ? 'PM' : 'AM';
+                                                    return (
+                                                        <option key={val} value={val}>
+                                                            {`${hour12}:${m} ${ampm}`}
+                                                        </option>
+                                                    );
+                                                })}
+                                            </select>
+                                            <svg className="w-4 h-4 text-sky-500 pointer-events-none absolute right-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+                                            </svg>
                                         </div>
                                     </div>
                                 ))}
