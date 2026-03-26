@@ -764,47 +764,50 @@ export default function SettingsPage() {
                         </div>
 
                         {/* Posts Per Day + Per-Slot Times */}
-                        <div className="mb-4">
-                            <div className="flex items-center justify-between mb-3">
-                                <label className="block text-sm font-semibold text-slate-800">
-                                    Posts per day
-                                </label>
-                                <div className="flex items-center gap-2">
-                                    <button
-                                        type="button"
-                                        onClick={() => adjustMaxPosts(-1)}
-                                        disabled={maxPostsPerDay <= 1}
-                                        className="h-7 w-7 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 disabled:opacity-40 flex items-center justify-center font-bold"
-                                    >−</button>
-                                    <span className="text-sky-700 font-bold w-5 text-center">{maxPostsPerDay}</span>
-                                    <button
-                                        type="button"
-                                        onClick={() => adjustMaxPosts(1)}
-                                        disabled={maxPostsPerDay >= 5}
-                                        className="h-7 w-7 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 disabled:opacity-40 flex items-center justify-center font-bold"
-                                    >+</button>
+                        <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                                <div>
+                                    <h3 className="text-sm font-bold text-slate-800">Daily Schedule</h3>
+                                    <p className="text-xs text-slate-500 mt-0.5">Control how many times you post and when.</p>
+                                </div>
+                                <div className="flex items-center bg-slate-200 p-1 rounded-lg self-start sm:self-auto">
+                                    {[1, 2, 3, 4, 5].map((num) => (
+                                        <button
+                                            key={num}
+                                            type="button"
+                                            onClick={() => {
+                                                const delta = num - maxPostsPerDay;
+                                                if (delta !== 0) adjustMaxPosts(delta);
+                                            }}
+                                            className={`w-9 h-8 flex items-center justify-center rounded-md text-sm font-bold transition-all ${
+                                                maxPostsPerDay === num
+                                                    ? 'bg-white shadow-sm text-sky-700'
+                                                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-300'
+                                            }`}
+                                        >
+                                            {num}
+                                        </button>
+                                    ))}
                                 </div>
                             </div>
 
-                            <div className="space-y-2">
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
                                 {slotTimes.map((slotTime, idx) => (
-                                    <div key={idx} className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                                        <Clock3 className="h-4 w-4 text-sky-600 flex-shrink-0" />
-                                        <span className="text-xs font-semibold text-slate-600 w-20">
+                                    <div key={idx} className="flex flex-col gap-1.5">
+                                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider pl-1">
                                             Post {idx + 1}
                                         </span>
-                                        <input
-                                            type="time"
-                                            value={slotTime}
-                                            onChange={(e) => setSlotTime(idx, e.target.value)}
-                                            className="flex-1 rounded-md border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 bg-white"
-                                        />
+                                        <div className="flex items-center rounded-lg border border-slate-200 bg-white px-2.5 py-2 shadow-sm focus-within:ring-2 focus-within:ring-sky-500 focus-within:border-sky-500 transition-all">
+                                            <input
+                                                type="time"
+                                                value={slotTime}
+                                                onChange={(e) => setSlotTime(idx, e.target.value)}
+                                                className="w-full bg-transparent text-sm font-semibold text-slate-800 outline-none hover:cursor-pointer [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-60 hover:[&::-webkit-calendar-picker-indicator]:opacity-100"
+                                            />
+                                        </div>
                                     </div>
                                 ))}
                             </div>
-                            <p className="text-xs text-slate-400 mt-2">
-                                Set the exact time for each post. The system will auto-generate content at these times on your selected days.
-                            </p>
                         </div>
 
                         <label className="block text-sm font-semibold text-slate-800 mb-2">Topic categories</label>

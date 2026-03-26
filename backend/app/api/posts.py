@@ -460,7 +460,7 @@ async def publish_to_linkedin(
         logger.error(f"Failed to publish post: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to publish post"
+            detail=f"Failed to publish post: {str(e)}"
         )
 
 

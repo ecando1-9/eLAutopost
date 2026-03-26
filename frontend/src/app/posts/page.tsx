@@ -150,12 +150,14 @@ export default function PostsPage() {
 
             if (!response.ok) {
                 let errorMsg = `Failed to ${action} post`;
-                try {
-                    const errData = await response.json();
-                    errorMsg = errData.detail || errData.error || errorMsg;
-                } catch {
-                    const text = await response.text().catch(() => '');
-                    if (text) errorMsg = text;
+                const text = await response.text().catch(() => '');
+                if (text) {
+                    try {
+                        const errData = JSON.parse(text);
+                        errorMsg = errData.detail || errData.error || errData.message || errorMsg;
+                    } catch {
+                        errorMsg = text;
+                    }
                 }
                 toast.error(errorMsg);
                 throw new Error(errorMsg);

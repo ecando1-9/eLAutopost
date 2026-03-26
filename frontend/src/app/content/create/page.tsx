@@ -479,12 +479,14 @@ function CreateContentPageContent() {
 
         if (!response.ok) {
             let errMsg = 'Failed to publish post';
-            try {
-                const errData = await response.json();
-                errMsg = errData.detail || errData.error || errMsg;
-            } catch {
-                const text = await response.text().catch(() => '');
-                if (text) errMsg = text;
+            const text = await response.text().catch(() => '');
+            if (text) {
+                try {
+                    const errData = JSON.parse(text);
+                    errMsg = errData.detail || errData.error || errData.message || errMsg;
+                } catch {
+                    errMsg = text;
+                }
             }
             throw new Error(errMsg);
         }
@@ -509,8 +511,17 @@ function CreateContentPageContent() {
         });
 
         if (!response.ok) {
-            const text = await response.text();
-            throw new Error(text || 'Failed to schedule post');
+            let errMsg = 'Failed to schedule post';
+            const text = await response.text().catch(() => '');
+            if (text) {
+                try {
+                    const errData = JSON.parse(text);
+                    errMsg = errData.detail || errData.error || errData.message || errMsg;
+                } catch {
+                    errMsg = text;
+                }
+            }
+            throw new Error(errMsg);
         }
     };
 
