@@ -11,6 +11,7 @@ import {
     Plus,
     AlertCircle,
     Send,
+    Sparkles,
 } from 'lucide-react';
 import AppShell from '@/components/AppShell';
 
@@ -49,6 +50,12 @@ export default function ContentCalendarPage() {
     const [loading, setLoading] = useState(true);
     const [posts, setPosts] = useState<QueuePost[]>([]);
     const [selectedDay, setSelectedDay] = useState<string>(toDateKey(new Date()));
+    const [settingsMeta, setSettingsMeta] = useState<any>(null);
+    const [scheduleMeta, setScheduleMeta] = useState<any>(null);
+    
+    // Internal state for custom manual generation
+    const [generatingSlot, setGeneratingSlot] = useState<string | null>(null);
+    const [customPrompts, setCustomPrompts] = useState<Record<string, string>>({});
 
     useEffect(() => {
         const loadQueue = async () => {
@@ -56,19 +63,28 @@ export default function ContentCalendarPage() {
             try {
                 const { data } = await supabase.auth.getSession();
                 const token = data.session?.access_token;
-                const response = await fetch('/api/v1/user/queue', {
-                    headers: { Authorization: `Bearer ${token}` },
-                    cache: 'no-store',
-                });
+                const [queueRes, settingsRes, scheduleRes] = await Promise.all([
+                    fetch('/api/v1/user/queue', { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' }),
+                    fetch('/api/v1/settings', { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' }),
+                    fetch('/api/v1/user/schedule', { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' }),
+                ]);
 
-                if (!response.ok) {
-                    throw new Error('Failed to load queue');
+                if (queueRes.ok) {
+                    const payload = await queueRes.json();
+                    setPosts(payload.posts || []);
+                }
+                
+                if (settingsRes.ok) {
+                    const settings = await settingsRes.json();
+                    setSettingsMeta(settings);
                 }
 
-                const payload = await response.json();
-                setPosts(payload.posts || []);
+                if (scheduleRes.ok) {
+                    const payload = await scheduleRes.json();
+                    setScheduleMeta(payload.schedule || null);
+                }
             } catch (error) {
-                console.error('Failed to load calendar queue:', error);
+                console.error('Failed to load calendar data:', error);
                 setPosts([]);
             } finally {
                 setLoading(false);
@@ -102,6 +118,53 @@ export default function ContentCalendarPage() {
             return toDateKey(new Date(post.scheduled_at)) === selectedDay;
         });
     }, [scheduledPosts, selectedDay]);
+
+    const timelineSlots = useMemo(() => {
+        if (!scheduleMeta || !settingsMeta) return [];
+        const postsPerDay = Math.min(5, Math.max(1, settingsMeta.max_posts_per_day || 1));
+        const firstSlot =
+            typeof scheduleMeta.time_of_day === 'string' && scheduleMeta.time_of_day.length >= 5
+                ? scheduleMeta.time_of_day.slice(0, 5)
+                : '09:00';
+                            
+        const builtSlots: string[] = [firstSlot];
+        for (let i = 1; i < postsPerDay; i++) {
+            const [hh, mm] = builtSlots[i - 1].split(':').map(Number);
+            const nextH = ((hh + 3) % 24).toString().padStart(2, '0');
+            builtSlots.push(`${nextH}:${mm.toString().padStart(2, '0')}`);
+        }
+        
+        const usedPosts = new Set<string>();
+        
+        return builtSlots.map((slotTime, idx) => {
+            const [hh, mm] = slotTime.split(':').map(Number);
+            const targetMin = hh * 60 + mm;
+            
+            let closestPost: QueuePost | undefined;
+            let closestDiff = Infinity;
+
+            for (const post of selectedDayPosts) {
+                if (!post.scheduled_at || usedPosts.has(post.id)) continue;
+                const pt = new Date(post.scheduled_at);
+                const postMin = pt.getHours() * 60 + pt.getMinutes();
+                const diff = Math.abs(postMin - targetMin);
+                if (diff < 90 && diff < closestDiff) { // Within 1.5 hours
+                    closestDiff = diff;
+                    closestPost = post;
+                }
+            }
+            
+            if (closestPost) {
+                usedPosts.add(closestPost.id);
+            }
+            
+            return {
+                slotTime,
+                index: idx,
+                existingPost: closestPost
+            };
+        });
+    }, [scheduleMeta, settingsMeta, selectedDay, selectedDayPosts]);
 
     const draftCount = posts.filter((post) => post.status === 'draft').length;
 
@@ -184,57 +247,114 @@ export default function ContentCalendarPage() {
                                 </button>
                             </div>
 
-                            {selectedDayPosts.length === 0 ? (
-                                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-amber-800 text-sm flex items-start gap-2">
-                                    <AlertCircle className="h-4 w-4 mt-0.5" />
-                                    No scheduled post for this day. Generate content now and schedule it.
-                                </div>
-                            ) : (
-                                <div className="space-y-4">
-                                    {selectedDayPosts.map((post) => (
-                                        <div key={post.id} className="relative rounded-2xl border border-slate-100 bg-white p-5 shadow-sm hover:shadow-md transition-shadow">
-                                            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                                                <div className="flex-1">
-                                                    <div className="flex items-center gap-2 mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">
-                                                        <div className="flex items-center gap-1 text-sky-600 bg-sky-50 px-2.5 py-1 rounded-md">
-                                                            <Clock3 className="h-3.5 w-3.5" />
-                                                            {post.scheduled_at
-                                                                ? new Date(post.scheduled_at).toLocaleTimeString(undefined, {
-                                                                      hour: '2-digit',
-                                                                      minute: '2-digit',
-                                                                  })
-                                                                : 'Time not set'}
+                            <div className="space-y-4">
+                                {timelineSlots.length === 0 ? (
+                                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-amber-800 text-sm flex items-start gap-2">
+                                        <AlertCircle className="h-4 w-4 mt-0.5" />
+                                        Your auto-generation schedule is not active for this specific day. Update your schedule in Settings.
+                                    </div>
+                                ) : (
+                                    timelineSlots.map((slot) => {
+                                        if (slot.existingPost) {
+                                            const post = slot.existingPost;
+                                            return (
+                                                <div key={post.id} className="relative rounded-2xl border border-slate-100 bg-white p-5 shadow-sm hover:shadow-md transition-shadow">
+                                                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                                                        <div className="flex-1">
+                                                            <div className="flex items-center gap-2 mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">
+                                                                <div className="flex items-center gap-1 text-sky-600 bg-sky-50 px-2.5 py-1 rounded-md">
+                                                                    <Clock3 className="h-3.5 w-3.5" />
+                                                                    {post.scheduled_at
+                                                                        ? new Date(post.scheduled_at).toLocaleTimeString(undefined, {
+                                                                              hour: '2-digit',
+                                                                              minute: '2-digit',
+                                                                          })
+                                                                        : 'Time not set'}
+                                                                </div>
+                                                                <span className="px-2.5 py-1 rounded-md bg-slate-100 text-slate-600 border border-slate-200">
+                                                                    {post.topic || 'General Post'}
+                                                                </span>
+                                                            </div>
+                                                            
+                                                            <h3 className="text-base font-bold text-slate-900 line-clamp-1">
+                                                                {post.hook || 'Content automatically generating...'}
+                                                            </h3>
+                                                            
+                                                            <p className="mt-1.5 text-sm text-slate-500 line-clamp-2 max-w-2xl">
+                                                                {post.caption || 'This post is queued up for execution and the AI will finalize its payload before posting.'}
+                                                            </p>
                                                         </div>
-                                                        <span className="px-2.5 py-1 rounded-md bg-slate-100 text-slate-600 border border-slate-200">
-                                                            {post.topic || 'General Post'}
-                                                        </span>
+                                                        
+                                                        <div className="flex flex-col items-end gap-2 mt-2 sm:mt-0">
+                                                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700 border border-emerald-200">
+                                                                <CheckCircle2 className="h-3 w-3" /> Scheduled
+                                                            </span>
+                                                            <button
+                                                                onClick={() => router.push('/posts')}
+                                                                className="inline-flex items-center gap-1.5 rounded-lg text-xs font-bold text-sky-700 hover:text-sky-900 transition-colors px-1"
+                                                            >
+                                                                Review in Queue →
+                                                            </button>
+                                                        </div>
                                                     </div>
-                                                    
-                                                    <h3 className="text-base font-bold text-slate-900 line-clamp-1">
-                                                        {post.hook || 'Content automatically generating...'}
-                                                    </h3>
-                                                    
-                                                    <p className="mt-1.5 text-sm text-slate-500 line-clamp-2 max-w-2xl">
-                                                        {post.caption || 'This post is queued up for execution and the AI will finalize its payload before posting.'}
-                                                    </p>
                                                 </div>
-                                                
-                                                <div className="flex flex-col items-end gap-2 mt-2 sm:mt-0">
-                                                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700 border border-emerald-200">
-                                                        <CheckCircle2 className="h-3 w-3" /> Scheduled
-                                                    </span>
-                                                    <button
-                                                        onClick={() => router.push('/posts')}
-                                                        className="inline-flex items-center gap-1.5 rounded-lg text-xs font-bold text-sky-700 hover:text-sky-900 transition-colors px-1"
-                                                    >
-                                                        Review in Queue →
-                                                    </button>
+                                            );
+                                        } else {
+                                            const pKey = `${selectedDay}-${slot.index}`;
+                                            return (
+                                                <div key={`empty-${slot.index}`} className="relative rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-5 transition-colors focus-within:border-sky-400 focus-within:bg-sky-50/50">
+                                                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                                                        <div className="flex-1 w-full">
+                                                            <div className="flex items-center gap-2 mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">
+                                                                <div className="flex items-center gap-1 text-slate-500 bg-slate-200/50 px-2.5 py-1 rounded-md">
+                                                                    <Clock3 className="h-3.5 w-3.5" />
+                                                                    {(() => {
+                                                                        const [hh, mm] = slot.slotTime.split(':').map(Number);
+                                                                        const hour12 = hh === 0 ? 12 : hh > 12 ? hh - 12 : hh;
+                                                                        const ampm = hh >= 12 ? 'PM' : 'AM';
+                                                                        return `${hour12}:${mm.toString().padStart(2, '0')} ${ampm}`;
+                                                                    })()}
+                                                                </div>
+                                                                <span className="px-2.5 py-1 rounded-md bg-transparent text-slate-400 border border-slate-200">
+                                                                    Empty Slot
+                                                                </span>
+                                                            </div>
+                                                            <div className="mt-3 flex flex-col gap-3">
+                                                                <label className="text-sm font-semibold text-slate-700">Need something specific for this slot?</label>
+                                                                <div className="flex flex-col sm:flex-row gap-2 w-full">
+                                                                    <input
+                                                                        type="text"
+                                                                        placeholder="e.g. 'Top basic commands for Linux new users'"
+                                                                        value={customPrompts[pKey] || ''}
+                                                                        onChange={(e) => setCustomPrompts({ ...customPrompts, [pKey]: e.target.value })}
+                                                                        className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 placeholder:text-slate-400"
+                                                                        onKeyDown={(e) => {
+                                                                            if (e.key === 'Enter' && customPrompts[pKey]?.trim()) {
+                                                                                e.preventDefault();
+                                                                                router.push(`/content/create?scheduleDate=${selectedDay}&scheduleTime=${slot.slotTime}&topic=${encodeURIComponent(customPrompts[pKey].trim())}`);
+                                                                            }
+                                                                        }}
+                                                                    />
+                                                                    <button
+                                                                        disabled={!customPrompts[pKey]?.trim()}
+                                                                        onClick={() => {
+                                                                            router.push(`/content/create?scheduleDate=${selectedDay}&scheduleTime=${slot.slotTime}&topic=${encodeURIComponent(customPrompts[pKey].trim())}`);
+                                                                        }}
+                                                                        className="inline-flex items-center justify-center gap-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-sky-500 disabled:bg-slate-300 disabled:cursor-not-allowed"
+                                                                    >
+                                                                        <Sparkles className="h-4 w-4" />
+                                                                        Generate
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
+                                            );
+                                        }
+                                    })
+                                )}
+                            </div>
                         </div>
                     </>
                 )}

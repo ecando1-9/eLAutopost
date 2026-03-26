@@ -210,6 +210,7 @@ function CreateContentPageContent() {
         const qpTopic = searchParams.get('topic');
         const qpGoal = searchParams.get('goal');
         const qpDate = searchParams.get('scheduleDate');
+        const qpTime = searchParams.get('scheduleTime');
 
         if (qpTopic) {
             setFormData((prev) => ({ ...prev, topic: qpTopic }));
@@ -220,7 +221,8 @@ function CreateContentPageContent() {
         if (qpDate) {
             const parsed = new Date(qpDate);
             if (!Number.isNaN(parsed.getTime())) {
-                parsed.setHours(9, 0, 0, 0);
+                const parts = qpTime ? qpTime.split(':') : ['09', '00'];
+                parsed.setHours(parseInt(parts[0] || '9', 10), parseInt(parts[1] || '0', 10), 0, 0);
                 const tzOffsetMs = parsed.getTimezoneOffset() * 60000;
                 setScheduledAt(
                     new Date(parsed.getTime() - tzOffsetMs).toISOString().slice(0, 16)

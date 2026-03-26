@@ -418,14 +418,17 @@ class LinkedInService:
         payload: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        Ensure post ID is present even when LinkedIn returns it in headers only.
+        Ensure post ID is present and fully-qualified so public URLs work.
         """
-        if payload.get("id"):
-            return payload
-
         restli_id = response.headers.get("x-restli-id")
         if restli_id:
             payload["id"] = restli_id
+            return payload
+            
+        post_id = payload.get("id")
+        if post_id and not str(post_id).startswith("urn:li:"):
+            # We call /ugcPosts for all publishes, so fallback must match.
+            payload["id"] = f"urn:li:ugcPost:{post_id}"
 
         return payload
 
