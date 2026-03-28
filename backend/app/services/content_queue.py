@@ -118,11 +118,30 @@ class ContentQueueService:
                 # Calculate a suggested scheduling time
                 suggested_at = None
                 if schedule and schedule.get("is_active"):
-                    base_time = utc_now().replace(tzinfo=None) + timedelta(days=i + 1)
+                    if i == 0:
+                        # Find the furthest future scheduled_at to append to the end
+                        result = supabase_client.admin.table("posts").select(
+                            "scheduled_at"
+                        ).eq("user_id", user_id).order("scheduled_at", desc=True).limit(1).execute()
+                        
+                        last_post = result.data[0] if result.data else None
+                        if last_post and last_post.get("scheduled_at"):
+                            from datetime import datetime
+                            base_time = datetime.fromisoformat(
+                                last_post["scheduled_at"].replace("Z", "+00:00")
+                            ).replace(tzinfo=None) + timedelta(minutes=5)
+                        else:
+                            # Start from tomorrow at earliest if queue is empty
+                            base_time = utc_now().replace(tzinfo=None) + timedelta(days=1)
+                            base_time = base_time.replace(hour=0, minute=0, second=0)
+
                     suggested_at = scheduler_service.calculate_next_post_time(
                         schedule,
                         current_time=base_time
                     )
+                    if suggested_at:
+                        # Advance base_time so next loop gets NEXT slot
+                        base_time = suggested_at + timedelta(minutes=5)
 
                 # Save as 'pending_review' — MANDATORY user approval before publishing
                 post_data = {
