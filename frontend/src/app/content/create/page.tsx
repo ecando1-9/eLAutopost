@@ -262,17 +262,21 @@ function CreateContentPageContent() {
                     const payload = await scheduleRes.json();
                     const schedule = payload.schedule;
                     if (schedule && schedule.time_of_day) {
-                        // Pre-fill schedule time from user settings
-                        const [hh, mm] = schedule.time_of_day.slice(0, 5).split(':');
-                        const nextDay = new Date();
-                        nextDay.setDate(nextDay.getDate() + 1);
-                        nextDay.setHours(parseInt(hh), parseInt(mm), 0, 0);
-                        const tzOffsetMs = nextDay.getTimezoneOffset() * 60000;
-                        setScheduledAt(new Date(nextDay.getTime() - tzOffsetMs).toISOString().slice(0, 16));
+                        // Only auto-fill from defaults if not already set from URL parameters
+                        const hasUrlSchedule = searchParams.get('scheduleDate');
+                        if (!hasUrlSchedule) {
+                            const firstTime = schedule.time_of_day.split(',')[0].trim() || '09:00';
+                            const [hh, mm] = firstTime.split(':');
+                            const nextDay = new Date();
+                            nextDay.setDate(nextDay.getDate() + 1);
+                            nextDay.setHours(parseInt(hh, 10), parseInt(mm, 10), 0, 0);
+                            const tzOffsetMs = nextDay.getTimezoneOffset() * 60000;
+                            setScheduledAt(new Date(nextDay.getTime() - tzOffsetMs).toISOString().slice(0, 16));
+                        }
 
                         const days = schedule.days_of_week || [];
                         const maxPerDay = schedule.max_posts_per_day || 1;
-                        setUserScheduleInfo({ time: schedule.time_of_day.slice(0, 5), days, postsPerDay: maxPerDay });
+                        setUserScheduleInfo({ time: schedule.time_of_day.split(',')[0].trim(), days, postsPerDay: maxPerDay });
                     }
                 }
 

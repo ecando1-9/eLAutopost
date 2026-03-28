@@ -47,7 +47,7 @@ class GenerateQueueRequest(BaseModel):
 
 class ScheduleConfigRequest(BaseModel):
     days_of_week: List[str] = Field(default_factory=list)
-    time_of_day: str = Field(..., pattern=r"^\d{2}:\d{2}$")
+    time_of_day: str = Field(..., description="Comma-separated slots e.g. 09:00,12:00")
     timezone: str = Field(default="Asia/Kolkata")
     is_active: bool = True
     categories: Optional[List[str]] = None

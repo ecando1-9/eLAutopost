@@ -122,17 +122,17 @@ export default function ContentCalendarPage() {
     const timelineSlots = useMemo(() => {
         if (!scheduleMeta || !settingsMeta) return [];
         const postsPerDay = Math.min(5, Math.max(1, settingsMeta.max_posts_per_day || 1));
-        const firstSlot =
-            typeof scheduleMeta.time_of_day === 'string' && scheduleMeta.time_of_day.length >= 5
-                ? scheduleMeta.time_of_day.slice(0, 5)
-                : '09:00';
-                            
-        const builtSlots: string[] = [firstSlot];
-        for (let i = 1; i < postsPerDay; i++) {
-            const [hh, mm] = builtSlots[i - 1].split(':').map(Number);
+        const rawTimeStr = typeof scheduleMeta.time_of_day === 'string' ? scheduleMeta.time_of_day : '09:00';
+        let builtSlots = rawTimeStr.split(',').map(s => s.trim()).filter(Boolean);
+        if (builtSlots.length === 0) builtSlots = ['09:00'];
+        
+        // Extend or shrink to match maxPostsPerDay
+        for (let i = builtSlots.length; i < postsPerDay; i++) {
+            const [hh, mm] = (builtSlots[i - 1] || '09:00').split(':').map(Number);
             const nextH = ((hh + 3) % 24).toString().padStart(2, '0');
             builtSlots.push(`${nextH}:${mm.toString().padStart(2, '0')}`);
         }
+        builtSlots = builtSlots.slice(0, postsPerDay);
         
         const usedPosts = new Set<string>();
         

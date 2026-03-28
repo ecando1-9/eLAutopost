@@ -234,42 +234,60 @@ class SchedulerService:
     async def reschedule_future_posts(self, user_id: str, schedule: Dict[str, Any]) -> None:
         """
         Re-evaluates and shifts all future posts into the new schedule.
+        Essential when user changes their calendar preferences.
         """
         if not schedule.get("is_active"):
+            logger.info(f"Schedule for {user_id} is inactive, skipping rescheduling.")
             return
             
         try:
-            # 1. Fetch all future posts
-            result = supabase_client.admin.table("posts").select("id", "status", "scheduled_at").eq("user_id", user_id).in_("status", ["pending_review", "scheduled"]).execute()
-            posts = result.data or []
+            # 1. Fetch all future posts (those pending review or already scheduled but not yet posted)
+            result = supabase_client.admin.table("posts").select(
+                "id", "status", "scheduled_at"
+            ).eq("user_id", user_id).in_("status", ["pending_review", "scheduled"]).execute()
             
+            posts = result.data or []
             if not posts:
+                logger.info(f"No future posts to reschedule for user {user_id}")
                 return
-                
+            
+            logger.info(f"Starting rescheduling of {len(posts)} future posts for user {user_id}")
+            
+            # Sort them by their current scheduled_at to preserve their relative order
             def get_dt(p):
                 ds = p.get("scheduled_at")
                 return ds if ds else "9999-12-31"
             
             posts.sort(key=get_dt)
             
+            # We start from NOW and find the absolute next slot.
+            # After finding a slot, we must bump the base_time forward by at least 5 mins 
+            # to ENSURE the next call to calculate_next_post_time finds the NEXT slot 
+            # (and doesn't loop on the same slot if jitter made the previous time earlier).
             base_time = datetime.utcnow()
+            
+            updated_count = 0
             for post in posts:
                 # Get the absolute next slot AFTER base_time
                 next_time = self.calculate_next_post_time(schedule, base_time)
                 if not next_time:
+                    logger.warning(f"No available future slots found for user {user_id} while rescheduling")
                     break
                     
-                # Update this post in the database
+                # Update this post in the database with explicit Zulu 'Z' suffix for UTC
+                # This ensures Supabase / PostgreSQL treats it as UTC regardless of server settings.
                 supabase_client.admin.table("posts").update({
-                    "scheduled_at": next_time.isoformat()
+                    "scheduled_at": f"{next_time.isoformat()}Z"
                 }).eq("id", post["id"]).execute()
                 
-                # Advance base_time so the next post goes to the NEXT slot
-                base_time = next_time
+                # CRITICAL: Advance base_time by the calculated time + buffer
+                # This prevents two posts from being assigned the same time slot if jitter is negative.
+                base_time = next_time + timedelta(minutes=5)
+                updated_count += 1
 
-            logger.info(f"Successfully rescheduled {len(posts)} future posts for user {user_id}")
+            logger.info(f"Successfully rescheduled {updated_count} future posts for user {user_id} following schedule update.")
         except Exception as e:
-            logger.error(f"Failed to reschedule future posts for {user_id}: {e}")
+            logger.error(f"CRITICAL: Failed to reschedule future posts for {user_id}: {e}", exc_info=True)
 
     async def get_due_posts(self) -> List[Dict[str, Any]]:
         """
