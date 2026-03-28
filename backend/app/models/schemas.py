@@ -294,6 +294,11 @@ class PostResponse(BaseModel):
     posted_at: Optional[datetime]
     linkedin_post_id: Optional[str]
     linkedin_url: Optional[str]
+    likes_count: int = 0
+    comments_count: int = 0
+    shares_count: int = 0
+    impressions_count: int = 0
+    last_stats_update: Optional[datetime] = None
 
 
 # =============================================================================

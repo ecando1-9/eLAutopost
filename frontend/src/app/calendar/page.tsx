@@ -12,6 +12,8 @@ import {
     AlertCircle,
     Send,
     Sparkles,
+    Heart,
+    MessageSquare,
 } from 'lucide-react';
 import AppShell from '@/components/AppShell';
 
@@ -25,6 +27,8 @@ interface QueuePost {
     posted_at?: string;
     target?: 'person' | 'organization';
     organization_id?: string;
+    likes_count?: number;
+    comments_count?: number;
 }
 
 function toDateKey(date: Date): string {
@@ -247,6 +251,30 @@ export default function ContentCalendarPage() {
                                 </button>
                             </div>
 
+                            {/* Engagement Summary for Post-Only Days */}
+                            {selectedDayPosts.some(p => p.status === 'posted') && (
+                                <div className="grid grid-cols-2 gap-4 mb-6">
+                                    <div className="rounded-xl border border-sky-100 bg-sky-50/50 p-4">
+                                        <div className="flex items-center gap-2 text-sky-700 mb-1">
+                                            <Heart className="h-4 w-4" />
+                                            <span className="text-xs font-bold uppercase tracking-wider">Total Likes</span>
+                                        </div>
+                                        <p className="text-2xl font-bold text-slate-900">
+                                            {selectedDayPosts.reduce((sum, p) => sum + (p.likes_count || 0), 0)}
+                                        </p>
+                                    </div>
+                                    <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-4">
+                                        <div className="flex items-center gap-2 text-indigo-700 mb-1">
+                                            <MessageSquare className="h-4 w-4" />
+                                            <span className="text-xs font-bold uppercase tracking-wider">Total Comments</span>
+                                        </div>
+                                        <p className="text-2xl font-bold text-slate-900">
+                                            {selectedDayPosts.reduce((sum, p) => sum + (p.comments_count || 0), 0)}
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+
                             <div className="space-y-4">
                                 {selectedDayPosts.length === 0 && timelineSlots.length === 0 ? (
                                     <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-amber-800 text-sm flex items-start gap-2">
@@ -285,15 +313,35 @@ export default function ContentCalendarPage() {
                                                     </div>
                                                     
                                                     <div className="flex flex-col items-end gap-2 mt-2 sm:mt-0">
-                                                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700 border border-emerald-200">
-                                                            <CheckCircle2 className="h-3 w-3" /> Scheduled
-                                                        </span>
-                                                        <button
-                                                            onClick={() => router.push('/posts')}
-                                                            className="inline-flex items-center gap-1.5 rounded-lg text-xs font-bold text-sky-700 hover:text-sky-900 transition-colors px-1"
-                                                        >
-                                                            Review in Queue →
-                                                        </button>
+                                                        {post.status === 'posted' ? (
+                                                            <div className="flex flex-col items-end gap-1.5">
+                                                                <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700 border border-blue-200">
+                                                                    <Sparkles className="h-3 w-3" /> Published
+                                                                </span>
+                                                                <div className="flex items-center gap-3 mt-1">
+                                                                    <div className="flex items-center gap-1 text-slate-600">
+                                                                        <Heart className="h-3.5 w-3.5 text-pink-500 fill-pink-500" />
+                                                                        <span className="text-sm font-bold">{post.likes_count || 0}</span>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-1 text-slate-600">
+                                                                        <MessageSquare className="h-3.5 w-3.5 text-sky-500 fill-sky-500" />
+                                                                        <span className="text-sm font-bold">{post.comments_count || 0}</span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        ) : (
+                                                            <>
+                                                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700 border border-emerald-200">
+                                                                    <CheckCircle2 className="h-3 w-3" /> Scheduled
+                                                                </span>
+                                                                <button
+                                                                    onClick={() => router.push('/posts')}
+                                                                    className="inline-flex items-center gap-1.5 rounded-lg text-xs font-bold text-sky-700 hover:text-sky-900 transition-colors px-1"
+                                                                >
+                                                                    Review in Queue →
+                                                                </button>
+                                                            </>
+                                                        )}
                                                     </div>
                                                 </div>
                                             </div>

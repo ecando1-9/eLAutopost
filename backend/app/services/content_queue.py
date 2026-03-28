@@ -22,7 +22,10 @@ from ..core.datetime_utils import utc_now
 from ..services.database import supabase_client
 from ..services.content_generation import ContentGenerationService
 from ..services.scheduler import scheduler_service
+from ..services.linkedin import linkedin_service
 from ..models.schemas import ContentType
+import asyncio
+from datetime import datetime, timezone
 
 
 class ContentQueueService:
@@ -320,12 +323,54 @@ class ContentQueueService:
                 query = query.eq("status", status)
 
             result = query.order("created_at", desc=True).execute()
+            all_posts = result.data or []
 
-            return result.data or []
+            # Background-refresh stats for recently posted items (last 48h) that haven't been updated in 1h
+            posted_recently = [
+                p for p in all_posts 
+                if p.get("status") == "posted" and p.get("linkedin_post_id")
+            ]
+            
+            if posted_recently:
+                asyncio.create_task(self._refresh_posts_engagement(user_id, posted_recently))
+
+            return all_posts
 
         except Exception as e:
             logger.error(f"Failed to get user queue for {user_id}: {e}")
             return []
+
+    async def _refresh_posts_engagement(self, user_id: str, posts: List[Dict[str, Any]]):
+        """Helper to refresh stats via LinkedIn API in the background."""
+        now = utc_now()
+        for post in posts:
+            last_update_str = post.get("last_stats_update")
+            if last_update_str:
+                try:
+                    from ..core.datetime_utils import parse_datetime_utc
+                    last_update = parse_datetime_utc(last_update_str)
+                    if last_update and (now - last_update).total_seconds() < 3600:
+                        continue # Skip if updated recently
+                except:
+                    pass
+            
+            # Fetch from LinkedIn
+            try:
+                post_urn = post.get("linkedin_post_id")
+                if not post_urn: continue
+                
+                stats = await linkedin_service.get_post_stats(user_id, post_urn)
+                
+                # Update DB
+                supabase_client.admin.table("posts").update({
+                    "likes_count": stats.get("likes", 0),
+                    "comments_count": stats.get("comments", 0),
+                    "last_stats_update": now.isoformat()
+                }).eq("id", post["id"]).execute()
+                
+            except Exception as e:
+                logger.warning(f"Failed to update background stats for post {post.get('id')}: {e}")
+                continue
 
 
 # Service instance
