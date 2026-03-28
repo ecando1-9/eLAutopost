@@ -319,13 +319,13 @@ class ContentQueueService:
                 "*"
             ).eq("user_id", user_id)
 
-            if status:
-                query = query.eq("status", status)
-
-            result = query.order("created_at", desc=True).execute()
+            # Improved sorting: scheduled items first (by date), then others by creation
+            # In PostgreSQL via Supabase, we can use a complex order if needed, 
+            # but for now we'll sort in Python to handle the nullable scheduled_at nicely.
+            result = query.execute()
             all_posts = result.data or []
 
-            # Background-refresh stats for recently posted items (last 48h) that haven't been updated in 1h
+            # Background-refresh stats for recently posted items
             posted_recently = [
                 p for p in all_posts 
                 if p.get("status") == "posted" and p.get("linkedin_post_id")
@@ -334,6 +334,24 @@ class ContentQueueService:
             if posted_recently:
                 asyncio.create_task(self._refresh_posts_engagement(user_id, posted_recently))
 
+            # Sort logic: 
+            # 1. Scheduled posts (soonest first)
+            # 2. Posted posts (most recent first)
+            # 3. Everything else (most recent first)
+            def sort_key(post):
+                status = post.get("status")
+                sched = post.get("scheduled_at")
+                created = post.get("created_at", "")
+                posted = post.get("posted_at")
+                
+                if status == "scheduled" and sched:
+                    return (0, sched) # Scheduled first, sorted by time
+                if status == "posted" and posted:
+                    return (2, posted) # Posted last, sorted by posted time (desc later)
+                return (1, created) # Others in middle
+                
+            all_posts.sort(key=sort_key)
+            
             return all_posts
 
         except Exception as e:
