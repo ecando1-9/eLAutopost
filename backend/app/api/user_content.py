@@ -189,6 +189,13 @@ async def update_user_schedule(
             auto_topic=body.auto_topic
         )
 
+        # Trigger background rescheduling for future queued posts so they snap to the new settings
+        try:
+            import asyncio
+            asyncio.create_task(scheduler_service.reschedule_future_posts(user_id, schedule))
+        except Exception as e:
+            logger.error(f"Failed to queue rescheduling task: {e}")
+
         return {
             "success": True,
             "message": "Schedule updated successfully",

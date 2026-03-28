@@ -187,8 +187,8 @@ export default function SettingsPage() {
     // Individual time slots (one per post per day). timeOfDay = first slot for backward compat
     const [slotTimes, setSlotTimes] = useState<string[]>(['09:00']);
 
-    // Keep timeOfDay as derived first slot for API (legacy field)
-    const timeOfDay = slotTimes[0] || '09:00';
+    // Keep timeOfDay as comma-separated string for API to process multiple slots
+    const timeOfDay = [...slotTimes].sort().join(',') || '09:00';
 
     const setSlotTime = (index: number, value: string) => {
         setSlotTimes((prev) => {
@@ -345,17 +345,17 @@ export default function SettingsPage() {
                         );
                         setTimezone(schedule.timezone || 'Asia/Kolkata');
                         
-                        const firstSlot =
-                            typeof schedule.time_of_day === 'string' && schedule.time_of_day.length >= 5
-                                ? schedule.time_of_day.slice(0, 5)
-                                : '09:00';
+                        const rawTimeStr = typeof schedule.time_of_day === 'string' ? schedule.time_of_day : '09:00';
+                        let builtSlots = rawTimeStr.split(',').map(s => s.trim()).filter(Boolean);
+                        if (builtSlots.length === 0) builtSlots = ['09:00'];
                         
-                        const builtSlots: string[] = [firstSlot];
-                        for (let i = 1; i < fetchedMaxPosts; i++) {
-                            const [hh, mm] = builtSlots[i - 1].split(':').map(Number);
+                        // Extend or shrink to match maxPostsPerDay
+                        for (let i = builtSlots.length; i < fetchedMaxPosts; i++) {
+                            const [hh, mm] = (builtSlots[i - 1] || '09:00').split(':').map(Number);
                             const nextH = ((hh + 3) % 24).toString().padStart(2, '0');
                             builtSlots.push(`${nextH}:${mm.toString().padStart(2, '0')}`);
                         }
+                        builtSlots = builtSlots.slice(0, fetchedMaxPosts);
                         setSlotTimes(builtSlots);
                         const loadedCategories =
                             Array.isArray(schedule.categories) && schedule.categories.length > 0

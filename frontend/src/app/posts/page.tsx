@@ -389,7 +389,15 @@ export default function PostsPage() {
                                         <button
                                             onClick={() => {
                                                 if (post.scheduled_at) {
-                                                    setScheduleDate(new Date(post.scheduled_at).toISOString().slice(0, 16));
+                                                    const d = new Date(post.scheduled_at);
+                                                    const tzOffset = d.getTimezoneOffset() * 60000;
+                                                    const localISOTime = new Date(d.getTime() - tzOffset).toISOString().slice(0, 16);
+                                                    setScheduleDate(localISOTime);
+                                                } else {
+                                                    const d = new Date(Date.now() + 3600000);
+                                                    const tzOffset = d.getTimezoneOffset() * 60000;
+                                                    const localISOTime = new Date(d.getTime() - tzOffset).toISOString().slice(0, 16);
+                                                    setScheduleDate(localISOTime);
                                                 }
                                                 setScheduleModal(post);
                                             }}

@@ -67,21 +67,31 @@ class SchedulerService:
             current_utc = current_time.astimezone(pytz.UTC)
         current_local = current_utc.astimezone(user_tz)
 
-        # Get posting time
-        post_time = user_schedule.get("time_of_day")  # time object or string
-        if isinstance(post_time, str):
-            time_parts = post_time.split(":")
-            try:
-                post_time = time(
-                    hour=int(time_parts[0]),
-                    minute=int(time_parts[1]) if len(time_parts) > 1 else 0
-                )
-            except (ValueError, IndexError):
-                logger.warning(f"Invalid time_of_day '{post_time}', defaulting to 09:00")
-                post_time = time(hour=9, minute=0)
-
-        if not isinstance(post_time, time):
-            post_time = time(hour=9, minute=0)
+        # Get posting times (can be comma-separated like '09:00,14:00')
+        post_times_raw = user_schedule.get("time_of_day")
+        post_times = []
+        if isinstance(post_times_raw, str):
+            for t_str in post_times_raw.split(','):
+                t_str = t_str.strip()
+                if not t_str: continue
+                parts = t_str.split(":")
+                try:
+                    t_obj = time(
+                        hour=int(parts[0]),
+                        minute=int(parts[1]) if len(parts) > 1 else 0
+                    )
+                    post_times.append(t_obj)
+                except (ValueError, IndexError):
+                    pass
+        
+        if not post_times:
+            if isinstance(post_times_raw, time):
+                post_times = [post_times_raw]
+            else:
+                post_times = [time(hour=9, minute=0)]
+                
+        # Sort so we process earliest slots of the day first
+        post_times.sort()
 
         # Get days of week (e.g., ['MON', 'WED', 'FRI'])
         days_of_week = user_schedule.get("days_of_week", [])
@@ -98,25 +108,30 @@ class SchedulerService:
         if not scheduled_weekdays:
             return None
 
-        # Find next scheduled day (check up to 8 days including today)
+        # Find next scheduled day (check up to 14 days including today)
         next_post_local = None
-        for days_ahead in range(8):
+        for days_ahead in range(14):
             candidate_date = current_local.date() + timedelta(days=days_ahead)
             candidate_weekday = candidate_date.weekday()
 
             if candidate_weekday in scheduled_weekdays:
-                candidate_naive = datetime.combine(candidate_date, post_time)
-                try:
-                    candidate_datetime = user_tz.localize(candidate_naive, is_dst=None)
-                except Exception:
-                    # Handle DST edge cases gracefully
-                    candidate_datetime = user_tz.localize(candidate_naive, is_dst=False)
+                # Walk through each time slot on this day
+                for t_obj in post_times:
+                    candidate_naive = datetime.combine(candidate_date, t_obj)
+                    try:
+                        candidate_datetime = user_tz.localize(candidate_naive, is_dst=None)
+                    except Exception:
+                        candidate_datetime = user_tz.localize(candidate_naive, is_dst=False)
 
-                # If today, ensure the time hasn't already passed
-                if days_ahead == 0 and candidate_datetime <= current_local:
-                    continue
+                    # Ensure the candidate time hasn't already passed relative to current_time
+                    if candidate_datetime <= current_local:
+                        continue
 
-                next_post_local = candidate_datetime
+                    # Found the very next slot!
+                    next_post_local = candidate_datetime
+                    break
+            
+            if next_post_local is not None:
                 break
 
         if next_post_local is None:
@@ -215,6 +230,46 @@ class SchedulerService:
         except Exception as e:
             logger.error(f"Failed to update schedule for user {user_id}: {e}")
             raise Exception("Failed to update posting schedule")
+
+    async def reschedule_future_posts(self, user_id: str, schedule: Dict[str, Any]) -> None:
+        """
+        Re-evaluates and shifts all future posts into the new schedule.
+        """
+        if not schedule.get("is_active"):
+            return
+            
+        try:
+            # 1. Fetch all future posts
+            result = supabase_client.admin.table("posts").select("id", "status", "scheduled_at").eq("user_id", user_id).in_("status", ["pending_review", "scheduled"]).execute()
+            posts = result.data or []
+            
+            if not posts:
+                return
+                
+            def get_dt(p):
+                ds = p.get("scheduled_at")
+                return ds if ds else "9999-12-31"
+            
+            posts.sort(key=get_dt)
+            
+            base_time = datetime.utcnow()
+            for post in posts:
+                # Get the absolute next slot AFTER base_time
+                next_time = self.calculate_next_post_time(schedule, base_time)
+                if not next_time:
+                    break
+                    
+                # Update this post in the database
+                supabase_client.admin.table("posts").update({
+                    "scheduled_at": next_time.isoformat()
+                }).eq("id", post["id"]).execute()
+                
+                # Advance base_time so the next post goes to the NEXT slot
+                base_time = next_time
+
+            logger.info(f"Successfully rescheduled {len(posts)} future posts for user {user_id}")
+        except Exception as e:
+            logger.error(f"Failed to reschedule future posts for {user_id}: {e}")
 
     async def get_due_posts(self) -> List[Dict[str, Any]]:
         """
