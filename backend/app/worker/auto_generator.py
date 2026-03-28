@@ -2,14 +2,14 @@
 Auto Content Generator Worker.
 
 Runs periodically to:
-- Find users with active auto-posting and auto-topic generation
-- Determine how many posts are needed per day (max_posts_per_day from settings)
-- Calculate all scheduled slots for the day based on schedule settings
-- Generate the content at each slot and save as a scheduled post
+- Find users with active auto-posting and auto_topic=True
+- Generate 1-2 days of content (rolling queue, not 7 days at once)
+- Save posts as 'pending_review' so users must approve before publishing
 
 Security:
 - Ensures users have an active subscription
-- Respects rate limits or limits batch processing
+- Limits how far ahead posts are generated (2 days max)
+- User must review and approve before any post goes live
 """
 
 from typing import List, Dict, Any, Optional
@@ -23,11 +23,17 @@ from ..services.content_generation import content_service
 from .posting import posting_worker
 import pytz
 
+# Rolling window: only generate content this many days ahead
+_DAYS_AHEAD_MAX = 2
+# Only generate if fewer than this many pending/scheduled posts exist
+_MIN_QUEUE_THRESHOLD = 2
+
 
 class AutoGeneratorWorker:
     """
     Background worker for automatically generating content based on user schedules.
-    Respects max_posts_per_day and fills all scheduled time slots for each day.
+    Implements rolling queue: only generates content when queue is running low.
+    Saves posts as 'pending_review' — user must approve before publishing.
     """
 
     async def process_auto_generation(self) -> Dict[str, int]:
@@ -40,19 +46,19 @@ class AutoGeneratorWorker:
         stats = {"generated": 0, "skipped": 0, "failed": 0}
 
         try:
-            # 1. Fetch all active schedules with auto_topic=True
+            # Fetch all active schedules with auto_topic=True
             result = supabase_client.admin.table("posting_schedules").select(
                 "*"
             ).eq("is_active", True).eq("auto_topic", True).execute()
 
             schedules = result.data or []
-            logger.info(f"Found {len(schedules)} active schedules for auto-generation")
+            logger.info(f"Auto-generator: checking {len(schedules)} active schedules")
 
             for schedule in schedules:
                 try:
                     user_id = schedule["user_id"]
 
-                    # 2. Check if user has active subscription
+                    # Check subscription
                     has_access = await posting_worker._check_user_access(user_id)
                     if not has_access:
                         logger.warning(
@@ -61,7 +67,17 @@ class AutoGeneratorWorker:
                         stats["skipped"] += 1
                         continue
 
-                    # 3. Load user settings to get max_posts_per_day
+                    # Check rolling queue — skip if user already has enough pending posts
+                    pending_count = await self._count_pending_posts(user_id)
+                    if pending_count >= _MIN_QUEUE_THRESHOLD:
+                        logger.info(
+                            f"User {user_id} already has {pending_count} pending posts "
+                            f"(threshold: {_MIN_QUEUE_THRESHOLD}), skipping"
+                        )
+                        stats["skipped"] += 1
+                        continue
+
+                    # Load max_posts_per_day from settings
                     settings_result = supabase_client.admin.table("settings").select(
                         "max_posts_per_day"
                     ).eq("user_id", user_id).limit(1).execute()
@@ -72,32 +88,36 @@ class AutoGeneratorWorker:
                             settings_result.data[0].get("max_posts_per_day", 1) or 1
                         )
 
-                    # 4. Calculate all desired slot times for the next 7 days
-                    desired_slots = self._calculate_all_slots(schedule, max_posts_per_day)
+                    # Calculate posting slots for next 2 days (not 7)
+                    desired_slots = self._calculate_all_slots(
+                        schedule,
+                        max_posts_per_day,
+                        days_ahead=_DAYS_AHEAD_MAX
+                    )
 
                     if not desired_slots:
                         stats["skipped"] += 1
                         continue
 
-                    # 5. Get existing scheduled posts to avoid duplicates
+                    # Get existing scheduled/pending posts to avoid duplicates
                     now_iso = utc_now().isoformat()
                     existing_result = supabase_client.admin.table("posts").select(
                         "scheduled_at"
-                    ).eq("user_id", user_id).eq("status", "scheduled").gte(
-                        "scheduled_at", now_iso
-                    ).execute()
+                    ).eq("user_id", user_id).in_(
+                        "status", ["scheduled", "pending_review", "draft"]
+                    ).gte("scheduled_at", now_iso).execute()
 
                     existing_times: List[datetime] = []
                     for row in (existing_result.data or []):
                         try:
-                            dt_str = row["scheduled_at"]
-                            # Parse UTC datetime
-                            dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
-                            existing_times.append(dt)
+                            dt_str = row.get("scheduled_at", "")
+                            if dt_str:
+                                dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
+                                existing_times.append(dt)
                         except Exception:
                             pass
 
-                    # 6. Find slots that are not yet covered (within ±30 min of existing post)
+                    # Find slots not yet covered (within ±30 min of existing post)
                     missing_slots = []
                     for slot in desired_slots:
                         already_covered = any(
@@ -112,7 +132,7 @@ class AutoGeneratorWorker:
                         stats["skipped"] += 1
                         continue
 
-                    # 7. Generate a post for each missing slot
+                    # Generate content for each missing slot
                     categories = schedule.get("categories") or []
                     for slot_time in missing_slots:
                         try:
@@ -144,7 +164,9 @@ class AutoGeneratorWorker:
                                 ),
                                 "caption": final_caption,
                                 "scheduled_at": slot_time.isoformat(),
-                                "status": "scheduled",
+                                # IMPORTANT: Save as pending_review, NOT scheduled
+                                # User must review and approve before post goes live
+                                "status": "pending_review",
                                 "content_type": generated.content_type.value
                             }
 
@@ -152,25 +174,27 @@ class AutoGeneratorWorker:
 
                             logger.info(
                                 f"Auto-generated post for user {user_id} "
-                                f"at slot {slot_time.isoformat()}"
+                                f"at slot {slot_time.isoformat()} (pending review)"
                             )
                             stats["generated"] += 1
 
                         except Exception as slot_err:
                             logger.error(
-                                f"Error generating post for user {user_id} slot {slot_time}: {slot_err}"
+                                f"Error generating post for user {user_id} "
+                                f"slot {slot_time}: {slot_err}"
                             )
                             stats["failed"] += 1
 
                 except Exception as e:
                     logger.error(
-                        f"Error auto-generating for schedule {schedule.get('id')}: {e}"
+                        f"Error processing schedule {schedule.get('id')}: {e}"
                     )
                     stats["failed"] += 1
 
             logger.info(
-                f"Auto-generation complete: {stats['generated']} generated, "
-                f"{stats['skipped']} skipped, {stats['failed']} failed"
+                f"Auto-generation complete: {stats['generated']} generated "
+                f"(pending review), {stats['skipped']} skipped, "
+                f"{stats['failed']} failed"
             )
 
             return stats
@@ -179,17 +203,34 @@ class AutoGeneratorWorker:
             logger.error(f"AutoGeneratorWorker error: {e}")
             return stats
 
+    async def _count_pending_posts(self, user_id: str) -> int:
+        """Count posts in pending_review, draft, or scheduled status."""
+        try:
+            result = supabase_client.admin.table("posts").select(
+                "id", count="exact"
+            ).eq("user_id", user_id).in_(
+                "status", ["pending_review", "scheduled", "draft"]
+            ).execute()
+
+            if hasattr(result, 'count') and result.count is not None:
+                return result.count
+            return len(result.data) if result.data else 0
+        except Exception as e:
+            logger.error(f"Failed to count pending posts for {user_id}: {e}")
+            return 0
+
     def _calculate_all_slots(
         self,
         schedule: Dict[str, Any],
         max_posts_per_day: int,
-        days_ahead: int = 7
+        days_ahead: int = _DAYS_AHEAD_MAX
     ) -> List[datetime]:
         """
         Calculate all desired posting slots for the next `days_ahead` days.
+        Limited to 2 days ahead (rolling queue, not 7-day bulk generation).
 
-        Distributes `max_posts_per_day` posts across the day at equal intervals
-        around the user's preferred posting time with ±0-10 min randomness per slot.
+        Distributes max_posts_per_day posts across the day at equal intervals
+        around the user's preferred posting time with +-2 min jitter per slot.
 
         Returns a list of UTC datetime objects.
         """
@@ -205,8 +246,11 @@ class AutoGeneratorWorker:
         time_str = schedule.get("time_of_day", "09:00")
         if isinstance(time_str, str):
             parts = time_str.split(":")
-            anchor_hour = int(parts[0])
-            anchor_minute = int(parts[1]) if len(parts) > 1 else 0
+            try:
+                anchor_hour = int(parts[0])
+                anchor_minute = int(parts[1]) if len(parts) > 1 else 0
+            except (ValueError, IndexError):
+                anchor_hour, anchor_minute = 9, 0
         else:
             anchor_hour, anchor_minute = 9, 0
 
@@ -227,12 +271,11 @@ class AutoGeneratorWorker:
         slots: List[datetime] = []
 
         # Spread posts across the working day: from anchor to anchor + spread window
-        # If 3 posts/day with anchor 09:00: slots at ~09:00, ~12:00, ~15:00
-        spread_hours = max(1, min(max_posts_per_day - 1, 4)) * 3  # Max 4 extra slots = 12 hours span
+        spread_hours = max(1, min(max_posts_per_day - 1, 4)) * 3  # Max 12-hour span
         if max_posts_per_day <= 1:
             offsets_hours = [0]
         else:
-            step = spread_hours / (max_posts_per_day - 1) if max_posts_per_day > 1 else 0
+            step = spread_hours / (max_posts_per_day - 1)
             offsets_hours = [step * i for i in range(max_posts_per_day)]
 
         for day_offset in range(days_ahead):
@@ -245,8 +288,8 @@ class AutoGeneratorWorker:
                 slot_hour = (total_minutes // 60) % 24
                 slot_minute = total_minutes % 60
 
-                # Add ±10 min randomness
-                jitter = random.randint(-10, 10)
+                # Add tiny jitter (+-2 min) to appear human-like
+                jitter = random.randint(-2, 2)
                 slot_naive = datetime.combine(
                     candidate_date,
                     time(slot_hour, slot_minute)
@@ -255,7 +298,7 @@ class AutoGeneratorWorker:
                 try:
                     slot_local = user_tz.localize(slot_naive, is_dst=None)
                 except Exception:
-                    slot_local = user_tz.localize(slot_naive, is_dst=True)
+                    slot_local = user_tz.localize(slot_naive, is_dst=False)
 
                 # Only include future slots (at least 5 minutes from now)
                 slot_utc = slot_local.astimezone(pytz.UTC)

@@ -272,6 +272,28 @@ app.include_router(
 
 
 # =============================================================================
+# HEALTH CHECK ENDPOINT
+# =============================================================================
+# This endpoint is designed to be pinged by UptimeRobot every 5 minutes.
+# It prevents the Render free plan from spinning down the service,
+# which would otherwise kill the APScheduler background jobs.
+
+@app.get("/health", tags=["Health"])
+async def health_check():
+    """
+    Health check endpoint.
+    Used by monitoring services to keep the server alive on Render.
+    """
+    from .core.datetime_utils import utc_now
+    return {
+        "status": "ok",
+        "timestamp": utc_now().isoformat(),
+        "service": settings.APP_NAME,
+        "version": settings.APP_VERSION
+    }
+
+
+# =============================================================================
 # STARTUP MESSAGE
 # =============================================================================
 if __name__ == "__main__":

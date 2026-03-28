@@ -29,7 +29,7 @@ interface Post {
     caption: string;
     image_prompt: string;
     image_url?: string;
-    status: 'draft' | 'scheduled' | 'posted' | 'failed';
+    status: 'draft' | 'pending_review' | 'scheduled' | 'running' | 'posted' | 'failed';
     scheduled_at?: string;
     posted_at?: string;
     linkedin_url?: string;
@@ -269,7 +269,7 @@ export default function PostsPage() {
                         <Filter className="h-5 w-5 text-gray-400" />
                         <span className="text-sm font-medium text-gray-700">Filter by status:</span>
                         <div className="flex gap-2">
-                            {['all', 'draft', 'scheduled', 'posted', 'failed'].map(status => (
+                            {['all', 'draft', 'pending_review', 'scheduled', 'running', 'posted', 'failed'].map(status => (
                                 <button
                                     key={status}
                                     onClick={() => setStatusFilter(status)}
@@ -278,7 +278,7 @@ export default function PostsPage() {
                                             : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                                         }`}
                                 >
-                                    {status.charAt(0).toUpperCase() + status.slice(1)}
+                                    {status === 'all' ? 'All' : status.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
                                 </button>
                             ))}
                         </div>
@@ -375,7 +375,7 @@ export default function PostsPage() {
                                         <Eye className="h-4 w-4" />
                                         Preview
                                     </button>
-                                    {(post.status === 'draft' || post.status === 'failed') && (
+                                    {['draft', 'failed', 'pending_review'].includes(post.status) && (
                                         <button
                                             onClick={() => runPostAction(post.id, 'publish', post)}
                                             disabled={actionPostId === post.id}
@@ -385,14 +385,19 @@ export default function PostsPage() {
                                             Publish Now
                                         </button>
                                     )}
-                                    {(post.status === 'draft' || post.status === 'failed') && (
+                                    {['draft', 'failed', 'pending_review'].includes(post.status) && (
                                         <button
-                                            onClick={() => setScheduleModal(post)}
+                                            onClick={() => {
+                                                if (post.scheduled_at) {
+                                                    setScheduleDate(new Date(post.scheduled_at).toISOString().slice(0, 16));
+                                                }
+                                                setScheduleModal(post);
+                                            }}
                                             disabled={actionPostId === post.id}
                                             className="flex items-center gap-2 px-4 py-2 text-sm bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-60"
                                         >
                                             <Calendar className="h-4 w-4" />
-                                            Schedule
+                                            {post.status === 'pending_review' ? 'Approve & Schedule' : 'Schedule'}
                                         </button>
                                     )}
                                     {post.status === 'posted' && post.linkedin_url && (

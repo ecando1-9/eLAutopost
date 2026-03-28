@@ -122,44 +122,74 @@ class ContentGenerationService:
             style = sanitize_input(style, max_length=100)
             
             master_prompt = f"""
-You are a senior LinkedIn growth strategist with 30 years of experience in personal branding, social media algorithms, and copywriting.
+You are a world-class LinkedIn growth strategist and viral copywriter. You have helped 500+ professionals grow to 50K+ followers through data-driven content systems.
 
-User Inputs:
-Topic: {topic}
-Goal: {goal}
-Audience: {audience}
-Style: {style}
-Tone: {tone}
-Instructions: {instructions}
+CONTEXT:
+- Topic: {topic}
+- Goal: {goal}
+- Target Audience: {audience}
+- Content Format: {style}
+- Tone: {tone}
+- Special Instructions: {instructions}
 
-Output Structure (JSON ONLY):
+HOOK RULES (Critical — this determines if anyone reads):
+- Hook must be 3-7 words max
+- Use ONE of these proven frameworks:
+  • Bold statement: "AI will eliminate your job."
+  • Pattern interrupt: "Stop writing cold emails."
+  • Counterintuitive: "Networking is making you poorer."
+  • Specific number: "I grew 10K followers in 30 days."
+  • Question that creates FOMO: "Why do 95% of founders fail?"
+- NEVER start with: "I", "We", "The", "In", "Here", or "Have you ever"
+
+CAPTION RULES:
+- First line = hook (same as hook field)
+- Short bursts: max 2-3 lines per paragraph
+- Use line breaks generously for scannability
+- Include a relatable story or specific data point
+- End with ONE strong engagement question
+
+ENGAGEMENT QUESTION (CTA) RULES:
+- Must be a specific, easy-to-answer question
+- Creates debate or invites personal stories
+- Examples: "What's YOUR #1 lesson from failing?" NOT "What do you think?"
+
+Output Structure (VALID JSON ONLY — no markdown, no code blocks):
 {{
-  "hook": "Exactly 3-7 words. A massive scroll-stopper.",
-  "hook_variations": ["Variation 1", "Variation 2", "Variation 3", "Variation 4", "Variation 5"],
-  "caption": "Engaging caption with value, short paragraphs, and no generic AI fluff.",
-  "image_prompt": "A short, professional visual generation prompt (optional but preferred).",
-  "slides": [
-    "Slide 1: Viral hook/Title",
-    "Slide 2: Identifying the deep problem",
-    "Slide 3: High-level solution/framework",
-    "Slide 4: Detailed specific insight/example",
-    "Slide 5: Key takeaway/Impact",
-    "Slide 6: Powerful CTA"
+  "hook": "3-7 words. Scroll-stopping. No fluff.",
+  "hook_variations": [
+    "Alternative hook #1 (different framework)",
+    "Alternative hook #2 (different framework)",
+    "Alternative hook #3 (different framework)",
+    "Alternative hook #4 (different framework)",
+    "Alternative hook #5 (different framework)"
   ],
-  "cta": "The specific question to drive comments.",
-  "hashtags": ["list", "of", "4-6", "tags"],
-  "engagement_score": 0-100 (integer based on hook strength and trend),
-  "quality_score": 0-100 (integer based on clarity and value for audience),
-  "content_type": "alert, curiosity, insight, or future"
+  "caption": "Full LinkedIn post caption. Punchy. Scannable. No generic AI language.",
+  "image_prompt": "Professional visual prompt under 60 words. Modern, clean, LinkedIn aesthetic.",
+  "slides": [
+    "Slide 1: [Viral hook — same as hook field]",
+    "Slide 2: [The painful problem — be specific]",
+    "Slide 3: [Framework or solution — step-by-step]",
+    "Slide 4: [Deep insight or real example/data]",
+    "Slide 5: [Key transformation/result]",
+    "Slide 6: [Powerful CTA — your specific engagement question]"
+  ],
+  "cta": "One specific, debate-provoking question that invites personal stories.",
+  "hashtags": ["4", "to", "6", "relevant", "tags"],
+  "engagement_score": 85,
+  "quality_score": 90,
+  "content_type": "alert OR curiosity OR insight OR future"
 }}
 
-Writing Rules:
-• No "In today's fast-paced world" or generic introductions.
-• Use active voice and short sentences.
-• Tailor vocabulary specifically for {audience}.
-• Predicted engagement should be realistic.
+STRICT RULES:
+- NO "In today's fast-paced world", "game-changer", "leverage", "synergy", "delve", "unlock"
+- NO passive voice
+- NO corporate jargon
+- Every sentence must earn its place
+- Vocabulary tailored SPECIFICALLY for {audience}
+- Response must be valid JSON with EXACTLY the fields above
 
-Respond ONLY with valid JSON.
+Respond ONLY with valid JSON. No markdown wrapping. No explanations.
 """
             
             logger.info(f"Growth Coach generating strategy for: {topic}")

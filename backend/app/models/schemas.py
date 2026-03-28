@@ -32,7 +32,9 @@ class ContentType(str, Enum):
 class PostStatus(str, Enum):
     """Status of a LinkedIn post."""
     DRAFT = "draft"
+    PENDING_REVIEW = "pending_review"  # Auto-generated, awaiting user approval
     SCHEDULED = "scheduled"
+    RUNNING = "running"              # Currently being posted (prevents double-post)
     PENDING = "pending"
     POSTED = "posted"
     FAILED = "failed"
