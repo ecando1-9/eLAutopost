@@ -43,7 +43,9 @@ class LinkedInService:
         "openid",
         "profile",
         "email",
-        "w_member_social"
+        "w_member_social",
+        "w_organization_social",
+        "rw_organization_admin"
     ]
     
     def __init__(self):
@@ -54,9 +56,6 @@ class LinkedInService:
         self.default_target = settings.LINKEDIN_DEFAULT_TARGET
         self.organization_id = settings.LINKEDIN_ORGANIZATION_ID
         self.scopes = list(self.BASE_SCOPES)
-        if self.organization_id or self.default_target == "organization":
-            # Needed for Company Page posting.
-            self.scopes.append("w_organization_social")
     
     def get_authorization_url(self, state: str) -> str:
         """
