@@ -123,7 +123,7 @@ export default function ContentCalendarPage() {
         if (!scheduleMeta || !settingsMeta) return [];
         const postsPerDay = Math.min(5, Math.max(1, settingsMeta.max_posts_per_day || 1));
         const rawTimeStr = typeof scheduleMeta.time_of_day === 'string' ? scheduleMeta.time_of_day : '09:00';
-        let builtSlots = rawTimeStr.split(',').map(s => s.trim()).filter(Boolean);
+        let builtSlots: string[] = rawTimeStr.split(',').map((s: string) => s.trim()).filter(Boolean);
         if (builtSlots.length === 0) builtSlots = ['09:00'];
         
         // Extend or shrink to match maxPostsPerDay
@@ -136,7 +136,7 @@ export default function ContentCalendarPage() {
         
         const usedPosts = new Set<string>();
         
-        return builtSlots.map((slotTime, idx) => {
+        return builtSlots.map((slotTime: string, idx: number) => {
             const [hh, mm] = slotTime.split(':').map(Number);
             const targetMin = hh * 60 + mm;
             
@@ -248,75 +248,78 @@ export default function ContentCalendarPage() {
                             </div>
 
                             <div className="space-y-4">
-                                {timelineSlots.length === 0 ? (
+                                {selectedDayPosts.length === 0 && timelineSlots.length === 0 ? (
                                     <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-amber-800 text-sm flex items-start gap-2">
                                         <AlertCircle className="h-4 w-4 mt-0.5" />
                                         Your auto-generation schedule is not active for this specific day. Update your schedule in Settings.
                                     </div>
                                 ) : (
-                                    timelineSlots.map((slot) => {
-                                        if (slot.existingPost) {
-                                            const post = slot.existingPost;
-                                            return (
-                                                <div key={post.id} className="relative rounded-2xl border border-slate-100 bg-white p-5 shadow-sm hover:shadow-md transition-shadow">
-                                                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                                                        <div className="flex-1">
-                                                            <div className="flex items-center gap-2 mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">
-                                                                <div className="flex items-center gap-1 text-sky-600 bg-sky-50 px-2.5 py-1 rounded-md">
-                                                                    <Clock3 className="h-3.5 w-3.5" />
-                                                                    {post.scheduled_at
-                                                                        ? new Date(post.scheduled_at).toLocaleTimeString(undefined, {
-                                                                              hour: '2-digit',
-                                                                              minute: '2-digit',
-                                                                          })
-                                                                        : 'Time not set'}
-                                                                </div>
-                                                                <span className="px-2.5 py-1 rounded-md bg-slate-100 text-slate-600 border border-slate-200">
-                                                                    {post.topic || 'General Post'}
-                                                                </span>
+                                    <>
+                                        {/* 1. Show all ACTUAL posts for the day from the DB */}
+                                        {selectedDayPosts.map((post) => (
+                                            <div key={post.id} className="relative rounded-2xl border border-slate-100 bg-white p-5 shadow-sm hover:shadow-md transition-shadow">
+                                                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                                                    <div className="flex-1">
+                                                        <div className="flex items-center gap-2 mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">
+                                                            <div className="flex items-center gap-1 text-sky-600 bg-sky-50 px-2.5 py-1 rounded-md">
+                                                                <Clock3 className="h-3.5 w-3.5" />
+                                                                {post.scheduled_at
+                                                                    ? new Date(post.scheduled_at).toLocaleTimeString(undefined, {
+                                                                          hour: '2-digit',
+                                                                          minute: '2-digit',
+                                                                      })
+                                                                    : 'Time not set'}
                                                             </div>
-                                                            
-                                                            <h3 className="text-base font-bold text-slate-900 line-clamp-1">
-                                                                {post.hook || 'Content automatically generating...'}
-                                                            </h3>
-                                                            
-                                                            <p className="mt-1.5 text-sm text-slate-500 line-clamp-2 max-w-2xl">
-                                                                {post.caption || 'This post is queued up for execution and the AI will finalize its payload before posting.'}
-                                                            </p>
+                                                            <span className="px-2.5 py-1 rounded-md bg-slate-100 text-slate-600 border border-slate-200">
+                                                                {post.topic || 'General Post'}
+                                                            </span>
                                                         </div>
                                                         
-                                                        <div className="flex flex-col items-end gap-2 mt-2 sm:mt-0">
-                                                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700 border border-emerald-200">
-                                                                <CheckCircle2 className="h-3 w-3" /> Scheduled
-                                                            </span>
-                                                            <button
-                                                                onClick={() => router.push('/posts')}
-                                                                className="inline-flex items-center gap-1.5 rounded-lg text-xs font-bold text-sky-700 hover:text-sky-900 transition-colors px-1"
-                                                            >
-                                                                Review in Queue →
-                                                            </button>
-                                                        </div>
+                                                        <h3 className="text-base font-bold text-slate-900 line-clamp-1">
+                                                            {post.hook || 'Content automatically generating...'}
+                                                        </h3>
+                                                        
+                                                        <p className="mt-1.5 text-sm text-slate-500 line-clamp-2 max-w-2xl">
+                                                            {post.caption || 'This post is queued up for execution.'}
+                                                        </p>
+                                                    </div>
+                                                    
+                                                    <div className="flex flex-col items-end gap-2 mt-2 sm:mt-0">
+                                                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700 border border-emerald-200">
+                                                            <CheckCircle2 className="h-3 w-3" /> Scheduled
+                                                        </span>
+                                                        <button
+                                                            onClick={() => router.push('/posts')}
+                                                            className="inline-flex items-center gap-1.5 rounded-lg text-xs font-bold text-sky-700 hover:text-sky-900 transition-colors px-1"
+                                                        >
+                                                            Review in Queue →
+                                                        </button>
                                                     </div>
                                                 </div>
-                                            );
-                                        } else {
-                                            const pKey = `${selectedDay}-${slot.index}`;
+                                            </div>
+                                        ))}
+
+                                        {/* 2. Show Empty Slots only if under capacity */}
+                                        {Array.from({ length: Math.max(0, (timelineSlots.length || 0) - selectedDayPosts.length) }).map((_, i) => {
+                                            const slotIdx = selectedDayPosts.length + i;
+                                            const slotTime = timelineSlots[slotIdx]?.slotTime || '12:00';
+                                            const pKey = `${selectedDay}-empty-${slotIdx}`;
                                             return (
-                                                <div key={`empty-${slot.index}`} className="relative rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-5 transition-colors focus-within:border-sky-400 focus-within:bg-sky-50/50">
+                                                <div key={`empty-${slotIdx}`} className="relative rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-5 transition-colors focus-within:border-sky-400 focus-within:bg-sky-50/50">
                                                     <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                                                         <div className="flex-1 w-full">
                                                             <div className="flex items-center gap-2 mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">
                                                                 <div className="flex items-center gap-1 text-slate-500 bg-slate-200/50 px-2.5 py-1 rounded-md">
                                                                     <Clock3 className="h-3.5 w-3.5" />
                                                                     {(() => {
-                                                                        const [hh, mm] = slot.slotTime.split(':').map(Number);
+                                                                        const [hh, mm] = slotTime.split(':').map(Number);
                                                                         const hour12 = hh === 0 ? 12 : hh > 12 ? hh - 12 : hh;
                                                                         const ampm = hh >= 12 ? 'PM' : 'AM';
                                                                         return `${hour12}:${mm.toString().padStart(2, '0')} ${ampm}`;
                                                                     })()}
                                                                 </div>
                                                                 <span className="px-2.5 py-1 rounded-md bg-transparent text-slate-400 border border-slate-200">
-                                                                    Empty Slot
+                                                                    Available Slot
                                                                 </span>
                                                             </div>
                                                             <div className="mt-3 flex flex-col gap-3">
@@ -331,14 +334,14 @@ export default function ContentCalendarPage() {
                                                                         onKeyDown={(e) => {
                                                                             if (e.key === 'Enter' && customPrompts[pKey]?.trim()) {
                                                                                 e.preventDefault();
-                                                                                router.push(`/content/create?scheduleDate=${selectedDay}&scheduleTime=${slot.slotTime}&topic=${encodeURIComponent(customPrompts[pKey].trim())}`);
+                                                                                router.push(`/content/create?scheduleDate=${selectedDay}&scheduleTime=${slotTime}&topic=${encodeURIComponent(customPrompts[pKey].trim())}`);
                                                                             }
                                                                         }}
                                                                     />
                                                                     <button
                                                                         disabled={!customPrompts[pKey]?.trim()}
                                                                         onClick={() => {
-                                                                            router.push(`/content/create?scheduleDate=${selectedDay}&scheduleTime=${slot.slotTime}&topic=${encodeURIComponent(customPrompts[pKey].trim())}`);
+                                                                            router.push(`/content/create?scheduleDate=${selectedDay}&scheduleTime=${slotTime}&topic=${encodeURIComponent(customPrompts[pKey].trim())}`);
                                                                         }}
                                                                         className="inline-flex items-center justify-center gap-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-sky-500 disabled:bg-slate-300 disabled:cursor-not-allowed"
                                                                     >
@@ -351,8 +354,8 @@ export default function ContentCalendarPage() {
                                                     </div>
                                                 </div>
                                             );
-                                        }
-                                    })
+                                        })}
+                                    </>
                                 )}
                             </div>
                         </div>
