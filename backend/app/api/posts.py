@@ -15,7 +15,7 @@ Security:
 - Input validation
 """
 
-from fastapi import APIRouter, HTTPException, status, Request
+from fastapi import APIRouter, HTTPException, status, Request, Depends
 from typing import List, Optional
 from datetime import timedelta
 from pydantic import BaseModel
@@ -35,6 +35,7 @@ from ..services.database import supabase_client, log_audit_event
 from ..services.linkedin import linkedin_service
 from ..core.security import get_client_ip
 from ..middleware.rate_limit import limiter, POSTING_RATE_LIMIT
+from ..middleware.admin_auth import get_current_user_id
 
 
 router = APIRouter()
@@ -84,7 +85,11 @@ def _normalize_post_record(record: dict) -> dict:
 
 @router.post("/", response_model=PostResponse, status_code=status.HTTP_201_CREATED)
 @limiter.limit("30/minute")
-async def create_post(request: Request, post_data: PostCreate, user_id: str):
+async def create_post(
+    request: Request, 
+    post_data: PostCreate, 
+    user_id: str = Depends(get_current_user_id)
+):
     """
     Create a new post draft.
     
@@ -140,10 +145,10 @@ async def create_post(request: Request, post_data: PostCreate, user_id: str):
 @limiter.limit("60/minute")
 async def list_posts(
     request: Request,
-    user_id: str,
     status_filter: Optional[PostStatus] = None,
     page: int = 1,
-    page_size: int = 20
+    page_size: int = 20,
+    user_id: str = Depends(get_current_user_id)
 ):
     """
     List user's posts with optional filtering.
@@ -183,7 +188,11 @@ async def list_posts(
 
 @router.get("/{post_id}", response_model=PostResponse)
 @limiter.limit("60/minute")
-async def get_post(request: Request, post_id: str, user_id: str):
+async def get_post(
+    request: Request, 
+    post_id: str, 
+    user_id: str = Depends(get_current_user_id)
+):
     """
     Get a specific post.
     
@@ -223,7 +232,7 @@ async def update_post(
     request: Request,
     post_id: str,
     post_update: PostUpdate,
-    user_id: str
+    user_id: str = Depends(get_current_user_id)
 ):
     """
     Update a post.
@@ -292,7 +301,11 @@ async def update_post(
 
 @router.delete("/{post_id}", status_code=status.HTTP_204_NO_CONTENT)
 @limiter.limit("30/minute")
-async def delete_post(request: Request, post_id: str, user_id: str):
+async def delete_post(
+    request: Request, 
+    post_id: str, 
+    user_id: str = Depends(get_current_user_id)
+):
     """
     Delete a post.
     
@@ -340,9 +353,9 @@ async def delete_post(request: Request, post_id: str, user_id: str):
 async def publish_to_linkedin(
     request: Request,
     post_id: str,
-    user_id: str,
     target: Optional[str] = None,
-    organization_id: Optional[str] = None
+    organization_id: Optional[str] = None,
+    user_id: str = Depends(get_current_user_id)
 ):
     """
     Publish a post to LinkedIn.
@@ -470,7 +483,7 @@ async def schedule_post(
     request: Request,
     post_id: str,
     body: SchedulePostRequest,
-    user_id: str
+    user_id: str = Depends(get_current_user_id)
 ):
     """
     Schedule a draft/failed post for later publishing.
@@ -554,7 +567,10 @@ async def schedule_post(
 
 @router.get("/stats/summary", response_model=dict)
 @limiter.limit("60/minute")
-async def get_post_stats(request: Request, user_id: str):
+async def get_post_stats(
+    request: Request, 
+    user_id: str = Depends(get_current_user_id)
+):
     """
     Get post statistics for the user.
     

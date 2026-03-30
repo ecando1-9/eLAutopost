@@ -334,23 +334,18 @@ class ContentQueueService:
             if posted_recently:
                 asyncio.create_task(self._refresh_posts_engagement(user_id, posted_recently))
 
-            # Sort logic: 
-            # 1. Scheduled posts (soonest first)
-            # 2. Posted posts (most recent first)
-            # 3. Everything else (most recent first)
+            # Sort primarily by created_at DESC to ensure newest items are always first
+            # We handle parsing dates in Python to ensure robust sorting even if DB strings vary slightly.
             def sort_key(post):
-                status = post.get("status")
-                sched = post.get("scheduled_at")
-                created = post.get("created_at", "")
-                posted = post.get("posted_at")
+                from ..core.datetime_utils import parse_datetime_utc
+                created = post.get("created_at")
+                if not created: return 0
+                try:
+                    return parse_datetime_utc(created).timestamp()
+                except:
+                    return 0
                 
-                if status == "scheduled" and sched:
-                    return (0, sched) # Scheduled first, sorted by time
-                if status == "posted" and posted:
-                    return (2, posted) # Posted last, sorted by posted time (desc later)
-                return (1, created) # Others in middle
-                
-            all_posts.sort(key=sort_key)
+            all_posts.sort(key=sort_key, reverse=True)
             
             return all_posts
 

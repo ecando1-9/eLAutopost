@@ -146,13 +146,46 @@ class AutoGeneratorWorker:
                                 tone="professional"
                             )
 
-                            final_caption = generated.caption
-                            if generated.cta:
-                                final_caption += f"\n\n{generated.cta}"
+                            # Assemble final caption safely
+                            hook = (generated.hook or "").strip()
+                            body = (generated.caption or "").strip()
+                            cta = (generated.cta or "").strip()
+                            
+                            # Deduplicate hook if AI included it in body
+                            if body.lower().startswith(hook.lower()):
+                                body = body[len(hook):].strip()
+                                body = body.lstrip('.').lstrip(':').lstrip('\n').lstrip(' ')
+                            
+                            # Deduplicate CTA if AI included it in body
+                            if cta and cta.lower() in body.lower():
+                                # Try to remove CTA from the end specifically if possible
+                                if body.lower().endswith(cta.lower()):
+                                    body = body[:-len(cta)].strip()
+                                else:
+                                    # Fallback: keep cta but don't append it again
+                                    cta = ""
+
+                            # Remove existing hashtags from the end of body to prevent double-tagging
+                            import re
+                            # Match common hashtag patterns at the end of the text
+                            body = re.sub(r'(\s*#\w+)+$', '', body).strip()
+                            
+                            final_caption = hook
+                            if body:
+                                final_caption += f"\n\n{body}"
+                            if cta:
+                                final_caption += f"\n\n{cta}"
+                            
                             if generated.hashtags:
-                                final_caption += "\n\n" + " ".join(
-                                    [f"#{t}" for t in generated.hashtags]
-                                )
+                                cleaned_tags = []
+                                current_content = final_caption.lower()
+                                for t in generated.hashtags:
+                                    tag = t.strip().lstrip('#').replace('hashtag', '').replace(' ', '')
+                                    if tag and f"#{tag.lower()}" not in current_content:
+                                        cleaned_tags.append(f"#{tag}")
+                                
+                                if cleaned_tags:
+                                    final_caption += "\n\n" + " ".join(cleaned_tags)
 
                             post_data = {
                                 "user_id": user_id,

@@ -132,6 +132,11 @@ CONTEXT:
 - Tone: {tone}
 - Special Instructions: {instructions}
 
+EMOJI RULES:
+- Use emojis strategically to break up text and add visual interest.
+- Place emojis at the start of bullet points or at the end of punchy sentences.
+- Avoid emoji-stuffing; use 3-8 per post maximum.
+
 HOOK RULES (Critical — this determines if anyone reads):
 - Hook must be 3-7 words max
 - Use ONE of these proven frameworks:
@@ -142,29 +147,31 @@ HOOK RULES (Critical — this determines if anyone reads):
   • Question that creates FOMO: "Why do 95% of founders fail?"
 - NEVER start with: "I", "We", "The", "In", "Here", or "Have you ever"
 
-CAPTION RULES:
-- First line = hook (same as hook field)
-- Short bursts: max 2-3 lines per paragraph
-- Use line breaks generously for scannability
-- Include a relatable story or specific data point
-- End with ONE strong engagement question
+CAPTION (BODY) RULES:
+- The 'caption' field must ONLY contain the main body of the post.
+- DO NOT start with the hook.
+- DO NOT include the engagement question (CTA).
+- DO NOT include hashtags.
+- Use short bursts: max 2-3 lines per paragraph.
+- Use line breaks generously for scannability.
+- Include a relatable story or specific data point.
 
 ENGAGEMENT QUESTION (CTA) RULES:
-- Must be a specific, easy-to-answer question
-- Creates debate or invites personal stories
+- Must be a specific, easy-to-answer question.
+- Creates debate or invites personal stories.
 - Examples: "What's YOUR #1 lesson from failing?" NOT "What do you think?"
 
 Output Structure (VALID JSON ONLY — no markdown, no code blocks):
 {{
   "hook": "3-7 words. Scroll-stopping. No fluff.",
   "hook_variations": [
-    "Alternative hook #1 (different framework)",
-    "Alternative hook #2 (different framework)",
-    "Alternative hook #3 (different framework)",
-    "Alternative hook #4 (different framework)",
-    "Alternative hook #5 (different framework)"
+    "Alternative hook #1",
+    "Alternative hook #2",
+    "Alternative hook #3",
+    "Alternative hook #4",
+    "Alternative hook #5"
   ],
-  "caption": "Full LinkedIn post caption. Punchy. Scannable. No generic AI language.",
+  "caption": "Main post body ONLY. No hook. No CTA. No hashtags. Punchy. Scannable. Include relevant emojis.",
   "image_prompt": "Professional visual prompt under 60 words. Modern, clean, LinkedIn aesthetic.",
   "slides": [
     "Slide 1: [Viral hook — same as hook field]",
@@ -175,7 +182,7 @@ Output Structure (VALID JSON ONLY — no markdown, no code blocks):
     "Slide 6: [Powerful CTA — your specific engagement question]"
   ],
   "cta": "One specific, debate-provoking question that invites personal stories.",
-  "hashtags": ["4", "to", "6", "relevant", "tags"],
+  "hashtags": ["list", "of", "4-6", "relevant", "single-word", "tags", "without", "hashes"],
   "engagement_score": 85,
   "quality_score": 90,
   "content_type": "alert OR curiosity OR insight OR future"
@@ -185,9 +192,10 @@ STRICT RULES:
 - NO "In today's fast-paced world", "game-changer", "leverage", "synergy", "delve", "unlock"
 - NO passive voice
 - NO corporate jargon
-- Every sentence must earn its place
-- Vocabulary tailored SPECIFICALLY for {audience}
-- Response must be valid JSON with EXACTLY the fields above
+- NO hashtag prefix in the hashtags list (e.g., use "Cybersecurity" NOT "#Cybersecurity")
+- DO NOT include hashtags anywhere in the 'caption' or 'cta' fields.
+- Every sentence must earn its place.
+- Response must be valid JSON with EXACTLY the fields above.
 
 Respond ONLY with valid JSON. No markdown wrapping. No explanations.
 """

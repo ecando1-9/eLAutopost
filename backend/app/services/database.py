@@ -209,6 +209,29 @@ async def create_user_record(
             on_conflict="id"
         ).execute()
         
+        # Provision default trial subscription if it doesn't exist
+        try:
+            from datetime import timedelta
+            from ..core.datetime_utils import utc_now
+            now_utc = utc_now()
+            trial_end = now_utc + timedelta(days=30)
+            
+            supabase_client.admin.table("subscriptions").upsert(
+                {
+                    "user_id": user_id,
+                    "plan_name": "monthly_trial",
+                    "price": 0.00,
+                    "currency": "INR",
+                    "status": "trial",
+                    "trial_start": now_utc.isoformat(),
+                    "trial_end": trial_end.isoformat(),
+                },
+                on_conflict="user_id"
+            ).execute()
+            logger.info(f"Provisioned 30-day trial for user {user_id}")
+        except Exception as sub_err:
+            logger.error(f"Failed to auto-provision trial for {user_id}: {sub_err}")
+
         logger.info(f"Created user record for {email}")
         return result.data[0]
         
