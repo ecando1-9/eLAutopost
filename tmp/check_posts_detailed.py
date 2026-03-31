@@ -1,0 +1,67 @@
+
+import os
+import asyncio
+import json
+from supabase import create_client, Client
+from datetime import datetime, timezone
+
+# Load env variables from backend/.env
+env_path = r"c:\Users\yuvak\Downloads\ecantech_esolutions\projects\linkedin_automation\backend\.env"
+env_vars = {}
+with open(env_path, "r") as f:
+    for line in f:
+        if "=" in line and not line.startswith("#"):
+            key, value = line.strip().split("=", 1)
+            env_vars[key] = value.strip('"').strip("'")
+
+SUPABASE_URL = env_vars.get("SUPABASE_URL")
+SUPABASE_SERVICE_KEY = env_vars.get("SUPABASE_SERVICE_KEY")
+
+async def check_posts():
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        print("Missing Supabase credentials")
+        return
+
+    client: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+    
+    # Check scheduled posts
+    now = datetime.now(timezone.utc).isoformat()
+    print(f"Current time (UTC): {now}")
+    
+    try:
+        # Get count of scheduled posts
+        res_sched = client.table("posts").select("*").eq("status", "scheduled").execute()
+        scheduled_posts = res_sched.data or []
+        print(f"Total Scheduled: {len(scheduled_posts)}")
+        
+        due_posts = [p for p in scheduled_posts if p['scheduled_at'] <= now]
+        print(f"Due now: {len(due_posts)}")
+        for p in due_posts:
+            print(f"  - ID: {p['id']}, Time: {p['scheduled_at']}")
+
+        # Check failed posts
+        res_failed = client.table("posts").select("*").eq("status", "failed").execute()
+        failed_posts = res_failed.data or []
+        print(f"Total Failed: {len(failed_posts)}")
+        for p in failed_posts:
+             print(f"  - ID: {p['id']}, Error: {p.get('error_message')}")
+
+        # Check running posts
+        res_running = client.table("posts").select("*").eq("status", "running").execute()
+        running_posts = res_running.data or []
+        print(f"Total Running: {len(running_posts)}")
+        for p in running_posts:
+            print(f"  - ID: {p['id']}, Last Updated: {p.get('updated_at')}")
+
+        # Check posted posts (last 5)
+        res_posted = client.table("posts").select("*").eq("status", "posted").order("posted_at", desc=True).limit(5).execute()
+        posted_posts = res_posted.data or []
+        print(f"Recent Posted: {len(posted_posts)}")
+        for p in posted_posts:
+            print(f"  - ID: {p['id']}, Posted At: {p.get('posted_at')}")
+
+    except Exception as e:
+        print(f"Error querying database: {e}")
+
+if __name__ == "__main__":
+    asyncio.run(check_posts())

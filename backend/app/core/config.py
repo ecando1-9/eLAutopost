@@ -16,7 +16,7 @@ Security Notes:
 
 from typing import List, Optional
 from pydantic_settings import BaseSettings
-from pydantic import Field, validator
+from pydantic import Field, field_validator, model_validator
 import os
 from pathlib import Path
 
@@ -48,14 +48,14 @@ class Settings(BaseSettings):
     # =============================================================================
     # SUPABASE CONFIGURATION
     # =============================================================================
-    SUPABASE_URL: str = Field(..., env="SUPABASE_URL")
-    SUPABASE_KEY: str = Field(..., env="SUPABASE_KEY")
-    SUPABASE_SERVICE_KEY: str = Field(..., env="SUPABASE_SERVICE_KEY")
+    SUPABASE_URL: Optional[str] = Field(default=None, env="SUPABASE_URL")
+    SUPABASE_KEY: Optional[str] = Field(default=None, env="SUPABASE_KEY")
+    SUPABASE_SERVICE_KEY: Optional[str] = Field(default=None, env="SUPABASE_SERVICE_KEY")
     
     # =============================================================================
     # SECURITY SETTINGS
     # =============================================================================
-    SECRET_KEY: str = Field(..., env="SECRET_KEY")
+    SECRET_KEY: Optional[str] = Field(default=None, env="SECRET_KEY")
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 4320  # 3 days (3 * 24 * 60)
     
@@ -75,9 +75,9 @@ class Settings(BaseSettings):
     # =============================================================================
     # LINKEDIN API CONFIGURATION
     # =============================================================================
-    LINKEDIN_CLIENT_ID: str = Field(..., env="LINKEDIN_CLIENT_ID")
-    LINKEDIN_CLIENT_SECRET: str = Field(..., env="LINKEDIN_CLIENT_SECRET")
-    LINKEDIN_REDIRECT_URI: str = Field(..., env="LINKEDIN_REDIRECT_URI")
+    LINKEDIN_CLIENT_ID: Optional[str] = Field(default=None, env="LINKEDIN_CLIENT_ID")
+    LINKEDIN_CLIENT_SECRET: Optional[str] = Field(default=None, env="LINKEDIN_CLIENT_SECRET")
+    LINKEDIN_REDIRECT_URI: Optional[str] = Field(default=None, env="LINKEDIN_REDIRECT_URI")
     LINKEDIN_ORGANIZATION_ID: Optional[str] = Field(
         default=None, env="LINKEDIN_ORGANIZATION_ID"
     )
@@ -116,7 +116,7 @@ class Settings(BaseSettings):
     DATABASE_POOL_SIZE: int = 10
     DATABASE_MAX_OVERFLOW: int = 20
     
-    @validator("BACKEND_CORS_ORIGINS", pre=True)
+    @field_validator("BACKEND_CORS_ORIGINS", mode="before")
     def assemble_cors_origins(cls, v):
         """
         Parse CORS origins from string or list.
@@ -125,14 +125,51 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return [origin.strip() for origin in v.split(",")]
         return v
-    
-    @validator("SECRET_KEY")
+
+    @model_validator(mode="after")
+    def require_sensitive_fields(cls, values):
+        """
+        Require sensitive fields in production and warn in development.
+
+        This runs after field validation, so we can inspect multiple fields and
+        environment state together.
+        """
+        required_fields = [
+            "SUPABASE_URL",
+            "SUPABASE_KEY",
+            "SUPABASE_SERVICE_KEY",
+            "SECRET_KEY",
+            "LINKEDIN_CLIENT_ID",
+            "LINKEDIN_CLIENT_SECRET",
+            "LINKEDIN_REDIRECT_URI",
+            "GOOGLE_CLIENT_ID",
+            "GOOGLE_CLIENT_SECRET",
+        ]
+
+        environment = (values.ENVIRONMENT or "development").lower()
+        for field_name in required_fields:
+            value = getattr(values, field_name, None)
+            if not value:
+                if environment == "production":
+                    raise ValueError(
+                        f"{field_name} is required in production. "
+                        f"Set it in backend/.env (see YOUR_CONFIG.md)."
+                    )
+                print(
+                    f"[WARNING] {field_name} is not set; running in development mode with reduced functionality."
+                )
+
+        return values
+
+    @field_validator("SECRET_KEY")
     def validate_secret_key(cls, v):
         """
         Ensure SECRET_KEY is properly set and not using default/example value.
         This is critical for JWT token security.
         """
-        if not v or v == "your-secret-key-here-generate-with-openssl":
+        if v is None:
+            return v
+        if v == "your-secret-key-here-generate-with-openssl":
             raise ValueError(
                 "SECRET_KEY must be set to a secure random value. "
                 "Generate one with: openssl rand -hex 32"
@@ -141,16 +178,18 @@ class Settings(BaseSettings):
             raise ValueError("SECRET_KEY must be at least 32 characters long")
         return v
     
-    @validator("SUPABASE_URL")
+    @field_validator("SUPABASE_URL")
     def validate_supabase_url(cls, v):
         """Ensure Supabase URL is properly formatted."""
+        if v is None:
+            return v
         if not v or "your-project" in v:
             raise ValueError("SUPABASE_URL must be set to your actual Supabase project URL")
         if not v.startswith("https://"):
             raise ValueError("SUPABASE_URL must use HTTPS")
         return v
-    
-    @validator("OPENAI_API_KEY")
+
+    @field_validator("OPENAI_API_KEY")
     def validate_openai_key(cls, v):
         """Ensure OpenAI API key is set."""
         """Ensure OpenAI API key is set if provided."""
@@ -159,7 +198,7 @@ class Settings(BaseSettings):
             return v
         return v
 
-    @validator("LINKEDIN_DEFAULT_TARGET")
+    @field_validator("LINKEDIN_DEFAULT_TARGET")
     def validate_linkedin_default_target(cls, v):
         """Validate LinkedIn post target mode."""
         normalized = (v or "person").strip().lower()
