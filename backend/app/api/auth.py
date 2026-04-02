@@ -287,13 +287,31 @@ async def linkedin_auth(request: Request, user_id: str):
 
 @router.get("/linkedin/callback")
 @limiter.limit("10/minute")
-async def linkedin_callback(request: Request, code: str, state: str):
+async def linkedin_callback(
+    request: Request, 
+    code: Optional[str] = None, 
+    state: Optional[str] = None,
+    error: Optional[str] = None,
+    error_description: Optional[str] = None
+):
     """
     Handle LinkedIn OAuth callback.
     
     Exchanges code for token and stores it.
     """
     try:
+        if error:
+            logger.error(f"LinkedIn OAuth error: {error} - {error_description}")
+            return RedirectResponse(
+                url=f"{settings.BACKEND_CORS_ORIGINS[0]}/settings?linkedin=error&detail={error}"
+            )
+
+        if not code or not state:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Missing authorization code or state"
+            )
+
         # Extract user_id from state (not production-ready)
         # In production, retrieve from Redis
         parts = state.split(":")
