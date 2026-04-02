@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import {
     CheckCircle2,
     XCircle,
@@ -44,17 +45,33 @@ interface SystemDiagnostics {
 
 export default function RequirementsPage() {
     const router = useRouter();
+    const supabase = createClientComponentClient();
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [diagnostics, setDiagnostics] = useState<SystemDiagnostics | null>(null);
 
     const loadDiagnostics = async () => {
         try {
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
+
             const [profileRes, settingsRes, scheduleRes, queueRes] = await Promise.all([
-                fetch('/api/v1/auth/me', { cache: 'no-store' }),
-                fetch('/api/v1/settings', { cache: 'no-store' }),
-                fetch('/api/v1/user/schedule', { cache: 'no-store' }),
-                fetch('/api/v1/user/queue', { cache: 'no-store' }),
+                fetch('/api/v1/auth/me', { 
+                    headers: { 'Authorization': `Bearer ${token}` },
+                    cache: 'no-store' 
+                }),
+                fetch('/api/v1/settings', { 
+                    headers: { 'Authorization': `Bearer ${token}` },
+                    cache: 'no-store' 
+                }),
+                fetch('/api/v1/user/schedule', { 
+                    headers: { 'Authorization': `Bearer ${token}` },
+                    cache: 'no-store' 
+                }),
+                fetch('/api/v1/user/queue', { 
+                    headers: { 'Authorization': `Bearer ${token}` },
+                    cache: 'no-store' 
+                }),
             ]);
 
             const profile = profileRes.ok ? await profileRes.json() : {};

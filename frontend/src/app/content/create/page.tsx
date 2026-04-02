@@ -463,9 +463,15 @@ function CreateContentPageContent() {
             organization_id: override?.organizationId ?? payload.organization_id,
         };
 
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token;
+
         const response = await fetch('/api/v1/posts', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
             body: JSON.stringify(finalPayload)
         });
 
@@ -483,9 +489,15 @@ function CreateContentPageContent() {
         target: 'person' | 'organization',
         orgId?: string
     ) => {
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token;
+
         const response = await fetch(`/api/v1/posts/${postId}/publish`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
             body: JSON.stringify({
                 target,
                 organization_id: target === 'organization' ? (orgId || '') : undefined,
@@ -518,10 +530,16 @@ function CreateContentPageContent() {
         postId: string,
         scheduledDateTime: string
     ) => {
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token;
+
         const iso = new Date(scheduledDateTime).toISOString();
         const response = await fetch(`/api/v1/posts/${postId}/schedule`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
             body: JSON.stringify({ scheduled_at: iso }),
         });
 

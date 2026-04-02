@@ -1,0 +1,66 @@
+{
+  "settings": {
+    "exists": true,
+    "rows_count_sample": 1,
+    "columns": [
+      "id",
+      "user_id",
+      "default_tone",
+      "auto_post",
+      "notification_email",
+      "preferred_content_types",
+      "created_at",
+      "updated_at",
+      "default_goal",
+      "default_audience",
+      "default_style",
+      "publish_target",
+      "organization_id",
+      "max_posts_per_day"
+    ]
+  },
+  "posts": {
+    "exists": true,
+    "rows_count_sample": 0,
+    "columns": []
+  },
+  "users": {
+    "exists": true,
+    "rows_count_sample": 1,
+    "columns": [
+      "id",
+      "email",
+      "full_name",
+      "auth_provider",
+      "created_at",
+      "updated_at",
+      "last_login_at",
+      "is_active"
+    ]
+  },
+  "subscriptions": {
+    "exists": true,
+    "rows_count_sample": 1,
+    "columns": [
+      "id",
+      "user_id",
+      "plan_name",
+      "price",
+      "currency",
+      "status",
+      "trial_start",
+      "trial_end",
+      "subscription_start",
+      "renewal_date",
+      "last_payment_date",
+      "payment_method",
+      "created_at",
+      "updated_at"
+    ]
+  },
+  "linkedin_tokens": {
+    "exists": true,
+    "rows_count_sample": 0,
+    "columns": []
+  }
+}

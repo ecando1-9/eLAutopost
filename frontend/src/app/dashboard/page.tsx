@@ -95,7 +95,11 @@ export default function UserDashboard() {
         }
         try {
             setErrorMessage(null);
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
+
             const response = await fetch('/api/v1/user/dashboard', {
+                headers: { 'Authorization': `Bearer ${token}` },
                 cache: 'no-store',
             });
 

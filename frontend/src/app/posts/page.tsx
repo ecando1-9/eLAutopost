@@ -157,12 +157,17 @@ export default function PostsPage() {
     ) => {
         setActionPostId(postId);
         try {
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
             let response: Response;
 
             if (action === 'publish') {
                 response = await fetch(`/api/v1/posts/${postId}/publish`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
                     body: JSON.stringify({
                         target: post?.target || 'person',
                         organization_id: post?.organization_id || '',
@@ -174,7 +179,10 @@ export default function PostsPage() {
                     : new Date(Date.now() + 60 * 60 * 1000).toISOString();
                 response = await fetch(`/api/v1/posts/${postId}/schedule`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
                     body: JSON.stringify({
                         scheduled_at: scheduledAt,
                         target: post?.target || 'person',
@@ -184,6 +192,9 @@ export default function PostsPage() {
             } else {
                 response = await fetch(`/api/v1/posts/${postId}`, {
                     method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
                 });
             }
 

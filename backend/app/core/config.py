@@ -123,7 +123,9 @@ class Settings(BaseSettings):
         Supports comma-separated string from environment variables.
         """
         if isinstance(v, str):
-            return [origin.strip() for origin in v.split(",")]
+            # Strip brackets and quotes if present (JSON-like strings)
+            cleaned = v.strip().lstrip("[").rstrip("]").replace("\"", "").replace("'", "")
+            return [origin.strip() for origin in cleaned.split(",")]
         return v
 
     @model_validator(mode="after")

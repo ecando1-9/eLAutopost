@@ -300,10 +300,22 @@ export default function SettingsPage() {
                     return;
                 }
 
+                const { data: { session } } = await supabase.auth.getSession();
+                const token = session?.access_token;
+
                 const [profileRes, settingsRes, scheduleRes] = await Promise.all([
-                    fetch('/api/v1/auth/me', { cache: 'no-store' }),
-                    fetch('/api/v1/settings', { cache: 'no-store' }),
-                    fetch('/api/v1/user/schedule', { cache: 'no-store' }),
+                    fetch('/api/v1/auth/me', { 
+                        headers: { 'Authorization': `Bearer ${token}` },
+                        cache: 'no-store' 
+                    }),
+                    fetch('/api/v1/settings', { 
+                        headers: { 'Authorization': `Bearer ${token}` },
+                        cache: 'no-store' 
+                    }),
+                    fetch('/api/v1/user/schedule', { 
+                        headers: { 'Authorization': `Bearer ${token}` },
+                        cache: 'no-store' 
+                    }),
                 ]);
 
                 if (profileRes.ok) {
@@ -472,10 +484,16 @@ export default function SettingsPage() {
                 throw new Error('Select at least one category when auto topic mode is enabled.');
             }
 
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
+
             const [settingsRes, scheduleRes] = await Promise.all([
                 fetch('/api/v1/settings', {
                     method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
                     body: JSON.stringify({
                         default_tone: defaultTone,
                         auto_post: isActive,
@@ -491,7 +509,10 @@ export default function SettingsPage() {
                 }),
                 fetch('/api/v1/user/schedule', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
                     body: JSON.stringify({
                         days_of_week: scheduleDays,
                         time_of_day: timeOfDay,

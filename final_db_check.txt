@@ -1,0 +1,3 @@
+Testing with User: yuvakiranreddy7@gmail.com (ec42b449-3c28-46e7-a9e7-e46bca64361d)
+Table 'posts' HAS 'target' and 'organization_id' columns.
+Settings for user yuvakiranreddy7@gmail.com EXIST.
