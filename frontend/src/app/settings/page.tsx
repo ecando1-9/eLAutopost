@@ -739,8 +739,8 @@ export default function SettingsPage() {
                                         Personal profile posting is ready.
                                     </p>
                                     <p className="text-xs text-amber-800">
-                                        Company Page posting is not enabled for this LinkedIn app yet. To use Page or Both targets,
-                                        enable LinkedIn organization permissions for this app and then click Reconnect.
+                                        Managed LinkedIn Pages is not available now for this app.
+                                        Company Page posting will work only after LinkedIn approves organization permissions and you reconnect.
                                     </p>
                                 </div>
                             )}
@@ -782,10 +782,10 @@ export default function SettingsPage() {
                                         </div>
                                     ) : (
                                         <div className="rounded-lg bg-sky-50 border border-sky-100 p-3">
-                                            <p className="text-xs text-sky-800 font-semibold mb-0.5">No LinkedIn Pages linked to this account</p>
+                                            <p className="text-xs text-sky-800 font-semibold mb-0.5">Managed LinkedIn Pages is not available now</p>
                                             <p className="text-xs text-sky-700">
-                                                This is normal if you only post to your personal profile (most users). 
-                                                If you manage a Company Page, enter its numeric ID below.
+                                                This app does not have LinkedIn approval for Company Page permissions yet.
+                                                For now, please use personal profile posting only.
                                             </p>
                                         </div>
                                     )}
@@ -1101,7 +1101,7 @@ export default function SettingsPage() {
                             <p className="text-sm font-semibold text-slate-900 mb-2">Default LinkedIn Posting Target</p>
                             {isLinkedInConnected && !hasOrganizationPostingAccess && (
                                 <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                                    Page targets need `w_organization_social` and `rw_organization_admin` approval in the LinkedIn Developer Portal.
+                                    Managed LinkedIn Pages is not available now. Use Profile posting until LinkedIn approves Company Page permissions.
                                 </div>
                             )}
                             <div className="grid grid-cols-3 gap-2 mb-3">

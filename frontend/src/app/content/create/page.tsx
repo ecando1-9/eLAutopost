@@ -242,19 +242,45 @@ function CreateContentPageContent() {
     useEffect(() => {
         const loadBackendDefaults = async () => {
             try {
+                const hasUrlSchedule = Boolean(searchParams.get('scheduleDate'));
                 const [settingsRes, scheduleRes, meRes] = await Promise.all([
                     fetch('/api/v1/settings', { cache: 'no-store' }),
                     fetch('/api/v1/user/schedule', { cache: 'no-store' }),
                     fetch('/api/v1/auth/me', { cache: 'no-store' }),
                 ]);
 
+                let maxPostsPerDay = 1;
+
                 if (settingsRes.ok) {
                     const settings = await settingsRes.json();
-                    if (settings.default_tone) {
-                        const normalizedTone =
-                            String(settings.default_tone).charAt(0).toUpperCase() +
-                            String(settings.default_tone).slice(1).toLowerCase();
-                        setFormData((prev) => ({ ...prev, tone: normalizedTone }));
+                    const normalizedTone = settings.default_tone
+                        ? String(settings.default_tone).charAt(0).toUpperCase() +
+                          String(settings.default_tone).slice(1).toLowerCase()
+                        : undefined;
+
+                    setFormData((prev) => ({
+                        ...prev,
+                        goal: settings.default_goal || prev.goal,
+                        audience: settings.default_audience || prev.audience,
+                        style: settings.default_style || prev.style,
+                        tone: normalizedTone || prev.tone,
+                    }));
+
+                    if (typeof settings.max_posts_per_day === 'number') {
+                        maxPostsPerDay = Math.min(10, Math.max(1, settings.max_posts_per_day));
+                    }
+
+                    const publishTarget = ['person', 'organization', 'both'].includes(settings.publish_target)
+                        ? settings.publish_target
+                        : 'person';
+                    const savedOrganizationId = String(settings.organization_id || '').trim();
+
+                    setOrganizationId(savedOrganizationId);
+
+                    if (publishTarget === 'person' || savedOrganizationId) {
+                        setTargetMode(publishTarget as PublishTarget);
+                    } else {
+                        setTargetMode('person');
                     }
                 }
 
@@ -262,11 +288,14 @@ function CreateContentPageContent() {
                     const payload = await scheduleRes.json();
                     const schedule = payload.schedule;
                     if (schedule && schedule.time_of_day) {
-                        // Only auto-fill from defaults if not already set from URL parameters
-                        const hasUrlSchedule = searchParams.get('scheduleDate');
+                        const scheduleTimes = String(schedule.time_of_day)
+                            .split(',')
+                            .map((value: string) => value.trim())
+                            .filter(Boolean);
+                        const primaryTime = scheduleTimes[0] || '09:00';
+
                         if (!hasUrlSchedule) {
-                            const firstTime = schedule.time_of_day.split(',')[0].trim() || '09:00';
-                            const [hh, mm] = firstTime.split(':');
+                            const [hh, mm] = primaryTime.split(':');
                             const nextDay = new Date();
                             nextDay.setDate(nextDay.getDate() + 1);
                             nextDay.setHours(parseInt(hh, 10), parseInt(mm, 10), 0, 0);
@@ -274,9 +303,12 @@ function CreateContentPageContent() {
                             setScheduledAt(new Date(nextDay.getTime() - tzOffsetMs).toISOString().slice(0, 16));
                         }
 
-                        const days = schedule.days_of_week || [];
-                        const maxPerDay = schedule.max_posts_per_day || 1;
-                        setUserScheduleInfo({ time: schedule.time_of_day.split(',')[0].trim(), days, postsPerDay: maxPerDay });
+                        const days = Array.isArray(schedule.days_of_week) ? schedule.days_of_week : [];
+                        setUserScheduleInfo({
+                            time: scheduleTimes.join(', '),
+                            days,
+                            postsPerDay: maxPostsPerDay,
+                        });
                     }
                 }
 
@@ -291,7 +323,7 @@ function CreateContentPageContent() {
             }
         };
         loadBackendDefaults();
-    }, []);
+    }, [searchParams]);
 
     // Navigation
     const nextStep = () => setCurrentStep((prev) => (prev < 5 ? (prev + 1) as Step : prev));

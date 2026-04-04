@@ -3,50 +3,40 @@ Auto Content Generator Worker.
 
 Runs periodically to:
 - Find users with active auto-posting and auto_topic=True
-- Generate 1-2 days of content (rolling queue, not 7 days at once)
-- Save posts as 'pending_review' so users must approve before publishing
-
-Security:
-- Ensures users have an active subscription
-- Limits how far ahead posts are generated (2 days max)
-- User must review and approve before any post goes live
+- Generate 1-2 days of content against the exact saved schedule slots
+- Create scheduled posts that the posting worker can publish on time
 """
 
-from typing import List, Dict, Any, Optional
-import random
+from typing import List, Dict, Any
 from datetime import datetime, time, timedelta
-from ..core.config import logger
-from ..core.datetime_utils import utc_now
-from ..services.database import supabase_client
-from ..services.scheduler import scheduler_service
-from ..services.content_generation import content_service
-from .posting import posting_worker
+
 import pytz
 
-# Rolling window: only generate content this many days ahead
+from ..core.config import logger
+from ..core.datetime_utils import utc_now, parse_datetime_utc
+from ..services.automation_defaults import (
+    build_generation_instructions,
+    build_target_variants,
+    build_topic_from_category,
+    compose_linkedin_caption,
+    load_user_automation_settings,
+)
+from ..services.content_generation import content_service
+from ..services.database import supabase_client
+from .posting import posting_worker
+
+
 _DAYS_AHEAD_MAX = 2
-# Only generate if fewer than this many pending/scheduled posts exist
-_MIN_QUEUE_THRESHOLD = 2
 
 
 class AutoGeneratorWorker:
-    """
-    Background worker for automatically generating content based on user schedules.
-    Implements rolling queue: only generates content when queue is running low.
-    Saves posts as 'pending_review' — user must approve before publishing.
-    """
+    """Generate scheduled content that follows each user's saved settings."""
 
     async def process_auto_generation(self) -> Dict[str, int]:
-        """
-        Process all active schedules that need content generated.
-
-        Returns:
-            Stats: generated, skipped, failed counts
-        """
+        """Process all active schedules that need content generated."""
         stats = {"generated": 0, "skipped": 0, "failed": 0}
 
         try:
-            # Fetch all active schedules with auto_topic=True
             result = supabase_client.admin.table("posting_schedules").select(
                 "*"
             ).eq("is_active", True).eq("auto_topic", True).execute()
@@ -58,7 +48,6 @@ class AutoGeneratorWorker:
                 try:
                     user_id = schedule["user_id"]
 
-                    # Check subscription
                     has_access = await posting_worker._check_user_access(user_id)
                     if not has_access:
                         logger.warning(
@@ -67,190 +56,177 @@ class AutoGeneratorWorker:
                         stats["skipped"] += 1
                         continue
 
-                    # Check rolling queue — skip if user already has enough pending posts
-                    pending_count = await self._count_pending_posts(user_id)
-                    if pending_count >= _MIN_QUEUE_THRESHOLD:
-                        logger.info(
-                            f"User {user_id} already has {pending_count} pending posts "
-                            f"(threshold: {_MIN_QUEUE_THRESHOLD}), skipping"
-                        )
-                        stats["skipped"] += 1
-                        continue
-
-                    # Load max_posts_per_day from settings
-                    settings_result = supabase_client.admin.table("settings").select(
-                        "max_posts_per_day"
-                    ).eq("user_id", user_id).limit(1).execute()
-
-                    max_posts_per_day = 1
-                    if settings_result.data:
-                        max_posts_per_day = int(
-                            settings_result.data[0].get("max_posts_per_day", 1) or 1
-                        )
-
-                    # Calculate posting slots for next 2 days (not 7)
+                    user_settings = await load_user_automation_settings(user_id)
+                    target_variants = build_target_variants(user_settings)
                     desired_slots = self._calculate_all_slots(
-                        schedule,
-                        max_posts_per_day,
-                        days_ahead=_DAYS_AHEAD_MAX
+                        schedule=schedule,
+                        max_posts_per_day=user_settings.get("max_posts_per_day", 1),
+                        days_ahead=_DAYS_AHEAD_MAX,
                     )
 
                     if not desired_slots:
                         stats["skipped"] += 1
                         continue
 
-                    # Get existing scheduled/pending posts to avoid duplicates
                     now_iso = utc_now().isoformat()
                     existing_result = supabase_client.admin.table("posts").select(
-                        "scheduled_at"
+                        "scheduled_at,target,organization_id"
                     ).eq("user_id", user_id).in_(
                         "status", ["scheduled", "pending_review", "draft"]
                     ).gte("scheduled_at", now_iso).execute()
 
-                    existing_times: List[datetime] = []
+                    existing_assignments: List[Dict[str, Any]] = []
                     for row in (existing_result.data or []):
-                        try:
-                            dt_str = row.get("scheduled_at", "")
-                            if dt_str:
-                                dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
-                                existing_times.append(dt)
-                        except Exception:
-                            pass
+                        dt = parse_datetime_utc(row.get("scheduled_at"))
+                        if not dt:
+                            continue
 
-                    # Find slots not yet covered (within ±30 min of existing post)
-                    missing_slots = []
-                    for slot in desired_slots:
-                        already_covered = any(
-                            abs((slot - et).total_seconds()) < 1800
-                            for et in existing_times
+                        existing_assignments.append(
+                            {
+                                "scheduled_at": dt,
+                                "target": str(row.get("target") or "person").strip().lower() or "person",
+                                "organization_id": str(row.get("organization_id") or "").strip() or None,
+                            }
                         )
-                        if not already_covered:
-                            missing_slots.append(slot)
 
-                    if not missing_slots:
-                        logger.info(f"User {user_id}: all slots already filled")
+                    slot_plans: List[Dict[str, Any]] = []
+                    for slot in desired_slots:
+                        missing_variants = []
+                        for variant in target_variants:
+                            already_covered = any(
+                                abs((slot - assignment["scheduled_at"]).total_seconds()) < 1800
+                                and assignment["target"] == variant["target"]
+                                and assignment["organization_id"] == variant.get("organization_id")
+                                for assignment in existing_assignments
+                            )
+                            if not already_covered:
+                                missing_variants.append(variant)
+
+                        if missing_variants:
+                            slot_plans.append(
+                                {
+                                    "slot_time": slot,
+                                    "variants": missing_variants,
+                                }
+                            )
+
+                    if not slot_plans:
+                        logger.info(f"User {user_id}: all desired slots are already covered")
                         stats["skipped"] += 1
                         continue
 
-                    # Generate content for each missing slot
                     categories = schedule.get("categories") or []
-                    for slot_time in missing_slots:
+                    for index, slot_plan in enumerate(slot_plans):
+                        slot_time = slot_plan["slot_time"]
+                        variants = slot_plan["variants"]
+
                         try:
-                            topic = random.choice(categories) if categories else "General Industry Insights"
-
-                            generated = await content_service.generate_content(
+                            category = (
+                                categories[index % len(categories)]
+                                if categories
+                                else "Industry insights"
+                            )
+                            topic = build_topic_from_category(category, user_settings)
+                            generated = await self._generate_high_quality_content(
                                 topic=topic,
-                                goal="Authority",
-                                audience="General professionals",
-                                style="Text post",
-                                tone="professional"
+                                user_settings=user_settings,
+                                category=category,
                             )
+                            final_caption = compose_linkedin_caption(generated)
 
-                            # Assemble final caption safely
-                            hook = (generated.hook or "").strip()
-                            body = (generated.caption or "").strip()
-                            cta = (generated.cta or "").strip()
-                            
-                            # Deduplicate hook if AI included it in body
-                            if body.lower().startswith(hook.lower()):
-                                body = body[len(hook):].strip()
-                                body = body.lstrip('.').lstrip(':').lstrip('\n').lstrip(' ')
-                            
-                            # Deduplicate CTA if AI included it in body
-                            if cta and cta.lower() in body.lower():
-                                # Try to remove CTA from the end specifically if possible
-                                if body.lower().endswith(cta.lower()):
-                                    body = body[:-len(cta)].strip()
-                                else:
-                                    # Fallback: keep cta but don't append it again
-                                    cta = ""
+                            for variant in variants:
+                                post_data = {
+                                    "user_id": user_id,
+                                    "topic": topic,
+                                    "hook": generated.hook,
+                                    "image_prompt": (
+                                        getattr(generated, "image_prompt", None)
+                                        or f"Professional LinkedIn visual for {topic}"
+                                    ),
+                                    "caption": final_caption,
+                                    "scheduled_at": slot_time.isoformat(),
+                                    "status": "scheduled",
+                                    "content_type": generated.content_type.value,
+                                    "target": variant["target"],
+                                    "organization_id": variant.get("organization_id"),
+                                }
 
-                            # Remove existing hashtags from the end of body to prevent double-tagging
-                            import re
-                            # Match common hashtag patterns at the end of the text
-                            body = re.sub(r'(\s*#\w+)+$', '', body).strip()
-                            
-                            final_caption = hook
-                            if body:
-                                final_caption += f"\n\n{body}"
-                            if cta:
-                                final_caption += f"\n\n{cta}"
-                            
-                            if generated.hashtags:
-                                cleaned_tags = []
-                                current_content = final_caption.lower()
-                                for t in generated.hashtags:
-                                    tag = t.strip().lstrip('#').replace('hashtag', '').replace(' ', '')
-                                    if tag and f"#{tag.lower()}" not in current_content:
-                                        cleaned_tags.append(f"#{tag}")
-                                
-                                if cleaned_tags:
-                                    final_caption += "\n\n" + " ".join(cleaned_tags)
+                                supabase_client.admin.table("posts").insert(post_data).execute()
+                                existing_assignments.append(
+                                    {
+                                        "scheduled_at": slot_time,
+                                        "target": variant["target"],
+                                        "organization_id": variant.get("organization_id"),
+                                    }
+                                )
 
-                            post_data = {
-                                "user_id": user_id,
-                                "topic": topic,
-                                "hook": generated.hook,
-                                "image_prompt": (
-                                    getattr(generated, "image_prompt", None)
-                                    or f"Professional LinkedIn visual for {topic}"
-                                ),
-                                "caption": final_caption,
-                                "scheduled_at": slot_time.isoformat(),
-                                # IMPORTANT: Save as pending_review, NOT scheduled
-                                # User must review and approve before post goes live
-                                "status": "pending_review",
-                                "content_type": generated.content_type.value
-                            }
-
-                            supabase_client.admin.table("posts").insert(post_data).execute()
-
-                            logger.info(
-                                f"Auto-generated post for user {user_id} "
-                                f"at slot {slot_time.isoformat()} (pending review)"
-                            )
-                            stats["generated"] += 1
+                                logger.info(
+                                    f"Auto-generated scheduled post for user {user_id} "
+                                    f"at {slot_time.isoformat()} target={variant['target']}"
+                                )
+                                stats["generated"] += 1
 
                         except Exception as slot_err:
                             logger.error(
                                 f"Error generating post for user {user_id} "
-                                f"slot {slot_time}: {slot_err}"
+                                f"slot {slot_time.isoformat()}: {slot_err}"
                             )
                             stats["failed"] += 1
 
                 except Exception as e:
-                    logger.error(
-                        f"Error processing schedule {schedule.get('id')}: {e}"
-                    )
+                    logger.error(f"Error processing schedule {schedule.get('id')}: {e}")
                     stats["failed"] += 1
 
             logger.info(
                 f"Auto-generation complete: {stats['generated']} generated "
-                f"(pending review), {stats['skipped']} skipped, "
-                f"{stats['failed']} failed"
+                f"(scheduled), {stats['skipped']} skipped, {stats['failed']} failed"
             )
-
             return stats
-
         except Exception as e:
             logger.error(f"AutoGeneratorWorker error: {e}")
             return stats
 
-    async def _count_pending_posts(self, user_id: str) -> int:
-        """Count posts in pending_review, draft, or scheduled status."""
-        try:
-            result = supabase_client.admin.table("posts").select(
-                "id", count="exact"
-            ).eq("user_id", user_id).in_(
-                "status", ["pending_review", "scheduled", "draft"]
-            ).execute()
+    async def _generate_high_quality_content(
+        self,
+        topic: str,
+        user_settings: Dict[str, Any],
+        category: str
+    ):
+        """Generate content and retry once if the output is too generic."""
+        instructions = build_generation_instructions(user_settings, category)
+        generated = await content_service.generate_content(
+            topic=topic,
+            goal=user_settings.get("default_goal", "Authority"),
+            audience=user_settings.get("default_audience", "General Professionals"),
+            style=user_settings.get("default_style", "Carousel slides"),
+            tone=user_settings.get("default_tone", "professional"),
+            instructions=instructions,
+        )
 
-            if hasattr(result, 'count') and result.count is not None:
-                return result.count
-            return len(result.data) if result.data else 0
-        except Exception as e:
-            logger.error(f"Failed to count pending posts for {user_id}: {e}")
-            return 0
+        quality_score = int(getattr(generated, "quality_score", 0) or 0)
+        caption_length = len(str(getattr(generated, "caption", "") or "").strip())
+        if quality_score >= 78 and caption_length >= 120:
+            return generated
+
+        retry = await content_service.generate_content(
+            topic=topic,
+            goal=user_settings.get("default_goal", "Authority"),
+            audience=user_settings.get("default_audience", "General Professionals"),
+            style=user_settings.get("default_style", "Carousel slides"),
+            tone=user_settings.get("default_tone", "professional"),
+            instructions=(
+                instructions
+                + " Raise the specificity, practical value, and clarity. "
+                + "Use a sharper point of view and a more concrete example."
+            ),
+        )
+
+        retry_quality = int(getattr(retry, "quality_score", 0) or 0)
+        retry_caption_length = len(str(getattr(retry, "caption", "") or "").strip())
+        if retry_quality > quality_score or retry_caption_length > caption_length:
+            return retry
+
+        return generated
 
     def _calculate_all_slots(
         self,
@@ -258,15 +234,7 @@ class AutoGeneratorWorker:
         max_posts_per_day: int,
         days_ahead: int = _DAYS_AHEAD_MAX
     ) -> List[datetime]:
-        """
-        Calculate all desired posting slots for the next `days_ahead` days.
-        Limited to 2 days ahead (rolling queue, not 7-day bulk generation).
-
-        Distributes max_posts_per_day posts across the day at equal intervals
-        around the user's preferred posting time with +-2 min jitter per slot.
-
-        Returns a list of UTC datetime objects.
-        """
+        """Calculate future UTC slots from the exact saved comma-separated times."""
         if not schedule.get("is_active"):
             return []
 
@@ -275,69 +243,71 @@ class AutoGeneratorWorker:
         except Exception:
             user_tz = pytz.timezone("Asia/Kolkata")
 
-        # Parse preferred posting time (anchor time)
-        time_str = schedule.get("time_of_day", "09:00")
-        if isinstance(time_str, str):
-            parts = time_str.split(":")
-            try:
-                anchor_hour = int(parts[0])
-                anchor_minute = int(parts[1]) if len(parts) > 1 else 0
-            except (ValueError, IndexError):
-                anchor_hour, anchor_minute = 9, 0
-        else:
-            anchor_hour, anchor_minute = 9, 0
+        raw_time_value = schedule.get("time_of_day", "09:00")
+        parsed_times: List[time] = []
+        if isinstance(raw_time_value, str):
+            for raw_entry in raw_time_value.split(","):
+                candidate = raw_entry.strip()
+                if not candidate:
+                    continue
 
-        # Map days of week
+                parts = candidate.split(":")
+                try:
+                    parsed_time = time(
+                        hour=int(parts[0]),
+                        minute=int(parts[1]) if len(parts) > 1 else 0,
+                    )
+                except (ValueError, IndexError):
+                    continue
+
+                if all(existing != parsed_time for existing in parsed_times):
+                    parsed_times.append(parsed_time)
+
+        if not parsed_times:
+            parsed_times = [time(9, 0)]
+
+        parsed_times.sort()
+        parsed_times = parsed_times[:max_posts_per_day]
+
         day_map = {
-            'MON': 0, 'TUE': 1, 'WED': 2, 'THU': 3,
-            'FRI': 4, 'SAT': 5, 'SUN': 6
+            "MON": 0,
+            "TUE": 1,
+            "WED": 2,
+            "THU": 3,
+            "FRI": 4,
+            "SAT": 5,
+            "SUN": 6,
         }
-        schedule_days = schedule.get("days_of_week", [])
-        scheduled_weekdays = {day_map[d] for d in schedule_days if d in day_map}
-
+        schedule_days = [
+            str(day).strip().upper()
+            for day in (schedule.get("days_of_week", []) or [])
+            if str(day).strip()
+        ]
+        scheduled_weekdays = {day_map[day] for day in schedule_days if day in day_map}
         if not scheduled_weekdays:
             return []
 
         now_utc = utc_now()
-        now_local = now_utc.replace(tzinfo=pytz.UTC).astimezone(user_tz)
-
+        now_local = now_utc.astimezone(user_tz)
         slots: List[datetime] = []
-
-        # Spread posts across the working day: from anchor to anchor + spread window
-        spread_hours = max(1, min(max_posts_per_day - 1, 4)) * 3  # Max 12-hour span
-        if max_posts_per_day <= 1:
-            offsets_hours = [0]
-        else:
-            step = spread_hours / (max_posts_per_day - 1)
-            offsets_hours = [step * i for i in range(max_posts_per_day)]
 
         for day_offset in range(days_ahead):
             candidate_date = now_local.date() + timedelta(days=day_offset)
             if candidate_date.weekday() not in scheduled_weekdays:
                 continue
 
-            for offset_h in offsets_hours:
-                total_minutes = anchor_hour * 60 + anchor_minute + int(offset_h * 60)
-                slot_hour = (total_minutes // 60) % 24
-                slot_minute = total_minutes % 60
-
-                # Add tiny jitter (+-2 min) to appear human-like
-                jitter = random.randint(-2, 2)
-                slot_naive = datetime.combine(
-                    candidate_date,
-                    time(slot_hour, slot_minute)
-                ) + timedelta(minutes=jitter)
-
+            for slot_time in parsed_times:
+                slot_naive = datetime.combine(candidate_date, slot_time)
                 try:
                     slot_local = user_tz.localize(slot_naive, is_dst=None)
                 except Exception:
                     slot_local = user_tz.localize(slot_naive, is_dst=False)
 
-                # Only include future slots (at least 5 minutes from now)
                 slot_utc = slot_local.astimezone(pytz.UTC)
                 if slot_utc > now_utc + timedelta(minutes=5):
                     slots.append(slot_utc)
 
+        slots.sort()
         return slots
 
 

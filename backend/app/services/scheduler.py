@@ -4,7 +4,7 @@ Auto-Posting Scheduler Service.
 Handles:
 - Calculating next posting slots based on user preferences
 - Managing timezone conversions
-- Adding minimal human-like randomness to posting times
+- Preserving the exact posting times selected by the user
 - Scheduling background jobs
 
 Security:
@@ -13,7 +13,7 @@ Security:
 - User-specific scheduling
 
 Fix Notes:
-- Jitter reduced from +-20 min to +-2 min to prevent excessive time drift
+- Exact scheduled slots are preserved without random drift
 - DST edge cases handled with is_dst fallback
 - get_due_posts uses proper UTC ISO format
 """
@@ -21,8 +21,8 @@ Fix Notes:
 from datetime import datetime, time, timedelta
 from typing import Optional, List, Dict, Any
 import pytz
-import random
 from ..core.config import logger
+from ..core.datetime_utils import utc_now
 from ..services.database import supabase_client
 
 
@@ -44,13 +44,13 @@ class SchedulerService:
             current_time: Current time (defaults to now in UTC)
 
         Returns:
-            Next posting time in UTC (naive), or None if scheduling is disabled
+            Next posting time in timezone-aware UTC, or None if scheduling is disabled
         """
         if not user_schedule.get("is_active"):
             return None
 
         if current_time is None:
-            current_time = datetime.utcnow()
+            current_time = utc_now()
 
         # Get user's timezone (default IST)
         tz_name = user_schedule.get("timezone", "Asia/Kolkata")
@@ -104,7 +104,8 @@ class SchedulerService:
             'FRI': 4, 'SAT': 5, 'SUN': 6
         }
 
-        scheduled_weekdays = [day_map[d] for d in days_of_week if d in day_map]
+        normalized_days = [str(day).strip().upper() for day in days_of_week]
+        scheduled_weekdays = [day_map[day] for day in normalized_days if day in day_map]
         if not scheduled_weekdays:
             return None
 
@@ -137,13 +138,8 @@ class SchedulerService:
         if next_post_local is None:
             return None
 
-        # Add a tiny human-like jitter (+-2 minutes max, not +-20)
-        # This keeps posting close to the user-selected time without drifting
-        jitter_seconds = random.randint(-120, 120)
-        next_post_local = next_post_local + timedelta(seconds=jitter_seconds)
-
-        # Convert back to UTC (naive, for DB storage)
-        next_post_utc = next_post_local.astimezone(pytz.UTC).replace(tzinfo=None)
+        # Convert back to explicit UTC for consistent DB storage/comparison.
+        next_post_utc = next_post_local.astimezone(pytz.UTC)
 
         return next_post_utc
 
@@ -204,9 +200,15 @@ class SchedulerService:
                 logger.warning(f"Invalid timezone '{timezone}', defaulting to Asia/Kolkata")
                 timezone = "Asia/Kolkata"
 
+            normalized_days = [
+                str(day).strip().upper()
+                for day in days_of_week
+                if str(day).strip()
+            ]
+
             schedule_data = {
                 "user_id": user_id,
-                "days_of_week": days_of_week,
+                "days_of_week": normalized_days,
                 "time_of_day": time_of_day,
                 "timezone": timezone,
                 "is_active": is_active,
@@ -222,7 +224,7 @@ class SchedulerService:
 
             logger.info(
                 f"Updated schedule for user {user_id}: "
-                f"{time_of_day} on {days_of_week} ({timezone})"
+                f"{time_of_day} on {normalized_days} ({timezone})"
             )
 
             return result.data[0] if result.data else {}
@@ -264,7 +266,7 @@ class SchedulerService:
             # After finding a slot, we must bump the base_time forward by at least 5 mins 
             # to ENSURE the next call to calculate_next_post_time finds the NEXT slot 
             # (and doesn't loop on the same slot if jitter made the previous time earlier).
-            base_time = datetime.utcnow()
+            base_time = utc_now()
             
             updated_count = 0
             for post in posts:
@@ -274,10 +276,9 @@ class SchedulerService:
                     logger.warning(f"No available future slots found for user {user_id} while rescheduling")
                     break
                     
-                # Update this post in the database with explicit Zulu 'Z' suffix for UTC
-                # This ensures Supabase / PostgreSQL treats it as UTC regardless of server settings.
+                # Store the UTC offset explicitly so Supabase/PostgreSQL treats it as UTC.
                 supabase_client.admin.table("posts").update({
-                    "scheduled_at": f"{next_time.isoformat()}Z"
+                    "scheduled_at": next_time.isoformat()
                 }).eq("id", post["id"]).execute()
                 
                 # CRITICAL: Advance base_time by the calculated time + buffer
@@ -298,8 +299,7 @@ class SchedulerService:
             List of posts ready to be posted
         """
         try:
-            # Use UTC ISO format for reliable comparison
-            now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+            now = utc_now().isoformat()
 
             result = supabase_client.admin.table("posts").select(
                 "*"

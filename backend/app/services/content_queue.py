@@ -18,14 +18,18 @@ from typing import List, Dict, Any, Optional
 from datetime import timedelta
 import random
 from ..core.config import logger
-from ..core.datetime_utils import utc_now
+from ..core.datetime_utils import utc_now, parse_datetime_utc
+from ..services.automation_defaults import (
+    build_generation_instructions,
+    build_target_variants,
+    compose_linkedin_caption,
+    load_user_automation_settings,
+)
 from ..services.database import supabase_client
 from ..services.content_generation import ContentGenerationService
 from ..services.scheduler import scheduler_service
 from ..services.linkedin import linkedin_service
-from ..models.schemas import ContentType
 import asyncio
-from datetime import datetime, timezone
 
 
 class ContentQueueService:
@@ -98,11 +102,14 @@ class ContentQueueService:
 
             # Get user's schedule to suggest posting times
             schedule = await scheduler_service.get_user_schedule(user_id)
+            user_settings = await load_user_automation_settings(user_id)
+            target_variants = build_target_variants(user_settings)
 
             # Get recent topics to avoid duplicates
             recent_topics = await self._get_recent_topics(user_id, days=7)
 
             generated_posts = []
+            base_time = utc_now()
 
             for i in range(count):
                 # Select topic with rotation
@@ -112,10 +119,9 @@ class ContentQueueService:
                     exclude_topics=recent_topics
                 )
 
-                # Generate content
-                content = await self.content_service.generate_content(
+                content = await self._generate_high_quality_content(
                     topic=topic,
-                    tone="professional"
+                    user_settings=user_settings,
                 )
 
                 # Calculate a suggested scheduling time
@@ -129,14 +135,9 @@ class ContentQueueService:
                         
                         last_post = result.data[0] if result.data else None
                         if last_post and last_post.get("scheduled_at"):
-                            from datetime import datetime
-                            base_time = datetime.fromisoformat(
-                                last_post["scheduled_at"].replace("Z", "+00:00")
-                            ).replace(tzinfo=None) + timedelta(minutes=5)
-                        else:
-                            # Start from tomorrow at earliest if queue is empty
-                            base_time = utc_now().replace(tzinfo=None) + timedelta(days=1)
-                            base_time = base_time.replace(hour=0, minute=0, second=0)
+                            parsed_last_post = parse_datetime_utc(last_post["scheduled_at"])
+                            if parsed_last_post:
+                                base_time = parsed_last_post + timedelta(minutes=5)
 
                     suggested_at = scheduler_service.calculate_next_post_time(
                         schedule,
@@ -147,28 +148,33 @@ class ContentQueueService:
                         base_time = suggested_at + timedelta(minutes=5)
 
                 # Save as 'pending_review' — MANDATORY user approval before publishing
-                post_data = {
-                    "user_id": user_id,
-                    "topic": topic,
-                    "hook": content.hook,
-                    "image_prompt": (
-                        content.image_prompt
-                        if getattr(content, "image_prompt", None)
-                        else f"Professional LinkedIn visual for {topic}"
-                    ),
-                    "caption": content.caption,
-                    "content_type": content.content_type.value,
-                    "status": "pending_review",  # Requires user review!
-                    "scheduled_at": suggested_at.isoformat() if suggested_at else None
-                }
+                final_caption = compose_linkedin_caption(content)
+                for variant in target_variants:
+                    post_data = {
+                        "user_id": user_id,
+                        "topic": topic,
+                        "hook": content.hook,
+                        "image_prompt": (
+                            content.image_prompt
+                            if getattr(content, "image_prompt", None)
+                            else f"Professional LinkedIn visual for {topic}"
+                        ),
+                        "caption": final_caption,
+                        "content_type": content.content_type.value,
+                        "status": "pending_review",
+                        "scheduled_at": suggested_at.isoformat() if suggested_at else None,
+                        "target": variant["target"],
+                        "organization_id": variant.get("organization_id"),
+                    }
 
-                result = supabase_client.admin.table("posts").insert(
-                    post_data
-                ).execute()
+                    result = supabase_client.admin.table("posts").insert(
+                        post_data
+                    ).execute()
 
-                if result.data:
-                    generated_posts.append(result.data[0])
-                    recent_topics.append(topic)
+                    if result.data:
+                        generated_posts.append(result.data[0])
+
+                recent_topics.append(topic)
 
                 # Increment usage metrics
                 await self._increment_usage(user_id, "posts_generated")
@@ -183,6 +189,47 @@ class ContentQueueService:
         except Exception as e:
             logger.error(f"Failed to fill queue for user {user_id}: {e}")
             raise
+
+    async def _generate_high_quality_content(
+        self,
+        topic: str,
+        user_settings: Dict[str, Any],
+    ):
+        """Generate content and retry once when the output is too generic."""
+        instructions = build_generation_instructions(user_settings, topic)
+        generated = await self.content_service.generate_content(
+            topic=topic,
+            goal=user_settings.get("default_goal", "Authority"),
+            audience=user_settings.get("default_audience", "General Professionals"),
+            style=user_settings.get("default_style", "Carousel slides"),
+            tone=user_settings.get("default_tone", "professional"),
+            instructions=instructions,
+        )
+
+        quality_score = int(getattr(generated, "quality_score", 0) or 0)
+        caption_length = len(str(getattr(generated, "caption", "") or "").strip())
+        if quality_score >= 78 and caption_length >= 120:
+            return generated
+
+        retry = await self.content_service.generate_content(
+            topic=topic,
+            goal=user_settings.get("default_goal", "Authority"),
+            audience=user_settings.get("default_audience", "General Professionals"),
+            style=user_settings.get("default_style", "Carousel slides"),
+            tone=user_settings.get("default_tone", "professional"),
+            instructions=(
+                instructions
+                + " Raise the specificity, practical value, and clarity. "
+                + "Use a sharper point of view and a more concrete example."
+            ),
+        )
+
+        retry_quality = int(getattr(retry, "quality_score", 0) or 0)
+        retry_caption_length = len(str(getattr(retry, "caption", "") or "").strip())
+        if retry_quality > quality_score or retry_caption_length > caption_length:
+            return retry
+
+        return generated
 
     async def _select_next_topic(
         self,
