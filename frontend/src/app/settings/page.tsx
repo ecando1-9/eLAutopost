@@ -585,6 +585,8 @@ export default function SettingsPage() {
                 throw new Error(await readErrorMessage(scheduleRes));
             }
 
+            const schedulePayload = await scheduleRes.json().catch(() => null);
+
             const localPreferences: LocalPreferences = {
                 defaultGoal,
                 defaultAudience,
@@ -600,7 +602,9 @@ export default function SettingsPage() {
             setAvailableCategories((current) => mergeCategories([...current, ...normalizedSelectedCategories]));
             await loadLinkedInTargets();
 
-            setSuccessMessage('Settings saved. Your automation configuration is now updated.');
+            setSuccessMessage(
+                schedulePayload?.message || 'Settings saved. Your automation configuration is now updated.'
+            );
         } catch (error: any) {
             setErrorMessage(error.message || 'Failed to save settings');
         } finally {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import {
@@ -56,46 +56,52 @@ export default function ContentCalendarPage() {
     const [selectedDay, setSelectedDay] = useState<string>(toDateKey(new Date()));
     const [settingsMeta, setSettingsMeta] = useState<any>(null);
     const [scheduleMeta, setScheduleMeta] = useState<any>(null);
+    const autoGenerateAttemptedRef = useRef(false);
     
     // Internal state for custom manual generation
     const [generatingSlot, setGeneratingSlot] = useState<string | null>(null);
     const [customPrompts, setCustomPrompts] = useState<Record<string, string>>({});
 
-    useEffect(() => {
-        const loadQueue = async () => {
+    const loadQueue = async (options?: { keepLoading?: boolean }) => {
+        const keepLoading = options?.keepLoading ?? true;
+        if (keepLoading) {
             setLoading(true);
-            try {
-                const { data } = await supabase.auth.getSession();
-                const token = data.session?.access_token;
-                const [queueRes, settingsRes, scheduleRes] = await Promise.all([
-                    fetch('/api/v1/user/queue', { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' }),
-                    fetch('/api/v1/settings', { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' }),
-                    fetch('/api/v1/user/schedule', { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' }),
-                ]);
+        }
+        try {
+            const { data } = await supabase.auth.getSession();
+            const token = data.session?.access_token;
+            const [queueRes, settingsRes, scheduleRes] = await Promise.all([
+                fetch('/api/v1/user/queue', { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' }),
+                fetch('/api/v1/settings', { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' }),
+                fetch('/api/v1/user/schedule', { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' }),
+            ]);
 
-                if (queueRes.ok) {
-                    const payload = await queueRes.json();
-                    setPosts(payload.posts || []);
-                }
-                
-                if (settingsRes.ok) {
-                    const settings = await settingsRes.json();
-                    setSettingsMeta(settings);
-                }
+            if (queueRes.ok) {
+                const payload = await queueRes.json();
+                setPosts(payload.posts || []);
+            }
 
-                if (scheduleRes.ok) {
-                    const payload = await scheduleRes.json();
-                    setScheduleMeta(payload.schedule || null);
-                }
-            } catch (error) {
-                console.error('Failed to load calendar data:', error);
-                setPosts([]);
-            } finally {
+            if (settingsRes.ok) {
+                const settings = await settingsRes.json();
+                setSettingsMeta(settings);
+            }
+
+            if (scheduleRes.ok) {
+                const payload = await scheduleRes.json();
+                setScheduleMeta(payload.schedule || null);
+            }
+        } catch (error) {
+            console.error('Failed to load calendar data:', error);
+            setPosts([]);
+        } finally {
+            if (keepLoading) {
                 setLoading(false);
             }
-        };
+        }
+    };
 
-        loadQueue();
+    useEffect(() => {
+        void loadQueue();
     }, []);
 
     const upcomingDays = useMemo(() => {
@@ -171,6 +177,36 @@ export default function ContentCalendarPage() {
     }, [scheduleMeta, settingsMeta, selectedDay, selectedDayPosts]);
 
     const draftCount = posts.filter((post) => post.status === 'draft').length;
+
+    useEffect(() => {
+        const tryAutoGenerate = async () => {
+            if (loading || autoGenerateAttemptedRef.current) return;
+            if (!scheduleMeta?.is_active || !scheduleMeta?.auto_topic) return;
+            if (!settingsMeta?.auto_post) return;
+            if (scheduledPosts.length > 0) return;
+
+            autoGenerateAttemptedRef.current = true;
+
+            try {
+                const { data } = await supabase.auth.getSession();
+                const token = data.session?.access_token;
+                const response = await fetch('/api/v1/user/schedule/auto-generate', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                    },
+                });
+
+                if (response.ok) {
+                    await loadQueue({ keepLoading: false });
+                }
+            } catch (error) {
+                console.error('Failed to auto-generate calendar slots:', error);
+            }
+        };
+
+        void tryAutoGenerate();
+    }, [loading, scheduleMeta, settingsMeta, scheduledPosts.length]);
 
     return (
         <AppShell

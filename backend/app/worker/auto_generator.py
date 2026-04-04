@@ -46,133 +46,12 @@ class AutoGeneratorWorker:
 
             for schedule in schedules:
                 try:
-                    user_id = schedule["user_id"]
-
-                    has_access = await posting_worker._check_user_access(user_id)
-                    if not has_access:
-                        logger.warning(
-                            f"User {user_id} subscription expired, skipping auto-generation"
-                        )
-                        stats["skipped"] += 1
-                        continue
-
-                    user_settings = await load_user_automation_settings(user_id)
-                    target_variants = build_target_variants(user_settings)
-                    desired_slots = self._calculate_all_slots(
+                    user_stats = await self.process_user_auto_generation(
+                        user_id=schedule["user_id"],
                         schedule=schedule,
-                        max_posts_per_day=user_settings.get("max_posts_per_day", 1),
-                        days_ahead=_DAYS_AHEAD_MAX,
                     )
-
-                    if not desired_slots:
-                        stats["skipped"] += 1
-                        continue
-
-                    now_iso = utc_now().isoformat()
-                    existing_result = supabase_client.admin.table("posts").select(
-                        "scheduled_at,target,organization_id"
-                    ).eq("user_id", user_id).in_(
-                        "status", ["scheduled", "pending_review", "draft"]
-                    ).gte("scheduled_at", now_iso).execute()
-
-                    existing_assignments: List[Dict[str, Any]] = []
-                    for row in (existing_result.data or []):
-                        dt = parse_datetime_utc(row.get("scheduled_at"))
-                        if not dt:
-                            continue
-
-                        existing_assignments.append(
-                            {
-                                "scheduled_at": dt,
-                                "target": str(row.get("target") or "person").strip().lower() or "person",
-                                "organization_id": str(row.get("organization_id") or "").strip() or None,
-                            }
-                        )
-
-                    slot_plans: List[Dict[str, Any]] = []
-                    for slot in desired_slots:
-                        missing_variants = []
-                        for variant in target_variants:
-                            already_covered = any(
-                                abs((slot - assignment["scheduled_at"]).total_seconds()) < 1800
-                                and assignment["target"] == variant["target"]
-                                and assignment["organization_id"] == variant.get("organization_id")
-                                for assignment in existing_assignments
-                            )
-                            if not already_covered:
-                                missing_variants.append(variant)
-
-                        if missing_variants:
-                            slot_plans.append(
-                                {
-                                    "slot_time": slot,
-                                    "variants": missing_variants,
-                                }
-                            )
-
-                    if not slot_plans:
-                        logger.info(f"User {user_id}: all desired slots are already covered")
-                        stats["skipped"] += 1
-                        continue
-
-                    categories = schedule.get("categories") or []
-                    for index, slot_plan in enumerate(slot_plans):
-                        slot_time = slot_plan["slot_time"]
-                        variants = slot_plan["variants"]
-
-                        try:
-                            category = (
-                                categories[index % len(categories)]
-                                if categories
-                                else "Industry insights"
-                            )
-                            topic = build_topic_from_category(category, user_settings)
-                            generated = await self._generate_high_quality_content(
-                                topic=topic,
-                                user_settings=user_settings,
-                                category=category,
-                            )
-                            final_caption = compose_linkedin_caption(generated)
-
-                            for variant in variants:
-                                post_data = {
-                                    "user_id": user_id,
-                                    "topic": topic,
-                                    "hook": generated.hook,
-                                    "image_prompt": (
-                                        getattr(generated, "image_prompt", None)
-                                        or f"Professional LinkedIn visual for {topic}"
-                                    ),
-                                    "caption": final_caption,
-                                    "scheduled_at": slot_time.isoformat(),
-                                    "status": "scheduled",
-                                    "content_type": generated.content_type.value,
-                                    "target": variant["target"],
-                                    "organization_id": variant.get("organization_id"),
-                                }
-
-                                supabase_client.admin.table("posts").insert(post_data).execute()
-                                existing_assignments.append(
-                                    {
-                                        "scheduled_at": slot_time,
-                                        "target": variant["target"],
-                                        "organization_id": variant.get("organization_id"),
-                                    }
-                                )
-
-                                logger.info(
-                                    f"Auto-generated scheduled post for user {user_id} "
-                                    f"at {slot_time.isoformat()} target={variant['target']}"
-                                )
-                                stats["generated"] += 1
-
-                        except Exception as slot_err:
-                            logger.error(
-                                f"Error generating post for user {user_id} "
-                                f"slot {slot_time.isoformat()}: {slot_err}"
-                            )
-                            stats["failed"] += 1
-
+                    for key in stats:
+                        stats[key] += user_stats.get(key, 0)
                 except Exception as e:
                     logger.error(f"Error processing schedule {schedule.get('id')}: {e}")
                     stats["failed"] += 1
@@ -184,6 +63,156 @@ class AutoGeneratorWorker:
             return stats
         except Exception as e:
             logger.error(f"AutoGeneratorWorker error: {e}")
+            return stats
+
+    async def process_user_auto_generation(
+        self,
+        user_id: str,
+        schedule: Dict[str, Any] | None = None,
+    ) -> Dict[str, int]:
+        """Generate upcoming scheduled posts for a single user."""
+        stats = {"generated": 0, "skipped": 0, "failed": 0}
+
+        try:
+            if schedule is None:
+                result = supabase_client.admin.table("posting_schedules").select(
+                    "*"
+                ).eq("user_id", user_id).eq("is_active", True).eq("auto_topic", True).limit(1).execute()
+                schedule = result.data[0] if result.data else None
+
+            if not schedule:
+                stats["skipped"] += 1
+                return stats
+
+            has_access = await posting_worker._check_user_access(user_id)
+            if not has_access:
+                logger.warning(
+                    f"User {user_id} subscription expired, skipping auto-generation"
+                )
+                stats["skipped"] += 1
+                return stats
+
+            user_settings = await load_user_automation_settings(user_id)
+            target_variants = build_target_variants(user_settings)
+            desired_slots = self._calculate_all_slots(
+                schedule=schedule,
+                max_posts_per_day=user_settings.get("max_posts_per_day", 1),
+                days_ahead=_DAYS_AHEAD_MAX,
+            )
+
+            if not desired_slots:
+                stats["skipped"] += 1
+                return stats
+
+            now_iso = utc_now().isoformat()
+            existing_result = supabase_client.admin.table("posts").select(
+                "scheduled_at,target,organization_id"
+            ).eq("user_id", user_id).in_(
+                "status", ["scheduled", "pending_review", "draft"]
+            ).gte("scheduled_at", now_iso).execute()
+
+            existing_assignments: List[Dict[str, Any]] = []
+            for row in (existing_result.data or []):
+                dt = parse_datetime_utc(row.get("scheduled_at"))
+                if not dt:
+                    continue
+
+                existing_assignments.append(
+                    {
+                        "scheduled_at": dt,
+                        "target": str(row.get("target") or "person").strip().lower() or "person",
+                        "organization_id": str(row.get("organization_id") or "").strip() or None,
+                    }
+                )
+
+            slot_plans: List[Dict[str, Any]] = []
+            for slot in desired_slots:
+                missing_variants = []
+                for variant in target_variants:
+                    already_covered = any(
+                        abs((slot - assignment["scheduled_at"]).total_seconds()) < 1800
+                        and assignment["target"] == variant["target"]
+                        and assignment["organization_id"] == variant.get("organization_id")
+                        for assignment in existing_assignments
+                    )
+                    if not already_covered:
+                        missing_variants.append(variant)
+
+                if missing_variants:
+                    slot_plans.append(
+                        {
+                            "slot_time": slot,
+                            "variants": missing_variants,
+                        }
+                    )
+
+            if not slot_plans:
+                logger.info(f"User {user_id}: all desired slots are already covered")
+                stats["skipped"] += 1
+                return stats
+
+            categories = schedule.get("categories") or []
+            for index, slot_plan in enumerate(slot_plans):
+                slot_time = slot_plan["slot_time"]
+                variants = slot_plan["variants"]
+
+                try:
+                    category = (
+                        categories[index % len(categories)]
+                        if categories
+                        else "Industry insights"
+                    )
+                    topic = build_topic_from_category(category, user_settings)
+                    generated = await self._generate_high_quality_content(
+                        topic=topic,
+                        user_settings=user_settings,
+                        category=category,
+                    )
+                    final_caption = compose_linkedin_caption(generated)
+
+                    for variant in variants:
+                        post_data = {
+                            "user_id": user_id,
+                            "topic": topic,
+                            "hook": generated.hook,
+                            "image_prompt": (
+                                getattr(generated, "image_prompt", None)
+                                or f"Professional LinkedIn visual for {topic}"
+                            ),
+                            "caption": final_caption,
+                            "scheduled_at": slot_time.isoformat(),
+                            "status": "scheduled",
+                            "content_type": generated.content_type.value,
+                            "target": variant["target"],
+                            "organization_id": variant.get("organization_id"),
+                        }
+
+                        supabase_client.admin.table("posts").insert(post_data).execute()
+                        existing_assignments.append(
+                            {
+                                "scheduled_at": slot_time,
+                                "target": variant["target"],
+                                "organization_id": variant.get("organization_id"),
+                            }
+                        )
+
+                        logger.info(
+                            f"Auto-generated scheduled post for user {user_id} "
+                            f"at {slot_time.isoformat()} target={variant['target']}"
+                        )
+                        stats["generated"] += 1
+
+                except Exception as slot_err:
+                    logger.error(
+                        f"Error generating post for user {user_id} "
+                        f"slot {slot_time.isoformat()}: {slot_err}"
+                    )
+                    stats["failed"] += 1
+
+            return stats
+        except Exception as e:
+            logger.error(f"Auto-generator failed for user {user_id}: {e}")
+            stats["failed"] += 1
             return stats
 
     async def _generate_high_quality_content(

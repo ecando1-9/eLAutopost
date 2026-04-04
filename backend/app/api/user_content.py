@@ -199,7 +199,7 @@ async def update_user_schedule(
 
         if body.is_active and body.auto_topic:
             try:
-                asyncio.create_task(auto_generator_worker.process_auto_generation())
+                asyncio.create_task(auto_generator_worker.process_user_auto_generation(user_id))
             except Exception as e:
                 logger.error(f"Failed to queue auto-generation task: {e}")
 
@@ -219,6 +219,32 @@ async def update_user_schedule(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update schedule"
+        )
+
+
+@router.post("/schedule/auto-generate")
+@limiter.limit("10/minute")
+async def auto_generate_schedule_posts(
+    request: Request,
+    user_id: str = Depends(get_current_user_id)
+):
+    """Generate upcoming scheduled posts immediately for the current user."""
+    try:
+        stats = await auto_generator_worker.process_user_auto_generation(user_id)
+        return {
+            "success": True,
+            "message": (
+                f"Generated {stats['generated']} scheduled posts for upcoming slots."
+                if stats["generated"] > 0
+                else "No new scheduled posts were needed for upcoming slots."
+            ),
+            "stats": stats,
+        }
+    except Exception as e:
+        logger.error(f"Failed to auto-generate schedule posts for {user_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate scheduled posts"
         )
 
 
