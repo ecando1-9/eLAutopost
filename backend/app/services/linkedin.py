@@ -14,7 +14,8 @@ Security:
 - Rate limiting compliance
 """
 
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Set
+import asyncio
 import httpx
 import os
 from datetime import timedelta
@@ -37,13 +38,17 @@ class LinkedInService:
     TOKEN_URL = "https://www.linkedin.com/oauth/v2/accessToken"
     API_BASE = "https://api.linkedin.com/v2"
     USERINFO_URL = "https://api.linkedin.com/v2/userinfo"
-    
-    # Required OAuth modern scopes
-    BASE_SCOPES = [
+    HTTP_TIMEOUT = httpx.Timeout(15.0, connect=10.0)
+
+    OPENID_SCOPES = [
         "openid",
         "profile",
-        "email",
-        "w_member_social",
+        "email"
+    ]
+    MEMBER_POST_SCOPES = [
+        "w_member_social"
+    ]
+    ORGANIZATION_SCOPES = [
         "w_organization_social",
         "rw_organization_admin"
     ]
@@ -55,7 +60,44 @@ class LinkedInService:
         self.redirect_uri = settings.LINKEDIN_REDIRECT_URI
         self.default_target = settings.LINKEDIN_DEFAULT_TARGET
         self.organization_id = settings.LINKEDIN_ORGANIZATION_ID
-        self.scopes = list(self.BASE_SCOPES)
+        self.include_organization_scopes = settings.LINKEDIN_ENABLE_ORGANIZATION_SCOPES
+        self.scopes = self._build_requested_scopes()
+
+    def _build_requested_scopes(self) -> List[str]:
+        """Build the OAuth scope list for the current deployment."""
+        scopes = list(self.OPENID_SCOPES + self.MEMBER_POST_SCOPES)
+        if self.include_organization_scopes:
+            scopes.extend(
+                scope
+                for scope in self.ORGANIZATION_SCOPES
+                if scope not in scopes
+            )
+        return scopes
+
+    @staticmethod
+    def _normalize_scopes(raw_scopes: Any) -> List[str]:
+        """Normalize scopes from LinkedIn token payloads or stored DB values."""
+        if isinstance(raw_scopes, str):
+            candidates = raw_scopes.replace(",", " ").split()
+        elif isinstance(raw_scopes, list):
+            candidates = [str(item) for item in raw_scopes]
+        else:
+            candidates = []
+
+        normalized: List[str] = []
+        seen: Set[str] = set()
+        for scope in candidates:
+            cleaned_scope = str(scope).strip()
+            if cleaned_scope and cleaned_scope not in seen:
+                normalized.append(cleaned_scope)
+                seen.add(cleaned_scope)
+
+        return normalized
+
+    @classmethod
+    def _has_organization_scopes(cls, scopes: List[str]) -> bool:
+        """Check whether the granted scopes allow organization/page access."""
+        return any(scope in cls.ORGANIZATION_SCOPES for scope in scopes)
     
     def get_authorization_url(self, state: str) -> str:
         """
@@ -97,7 +139,7 @@ class LinkedInService:
             Exception: If token exchange fails
         """
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=self.HTTP_TIMEOUT) as client:
                 response = await client.post(
                     self.TOKEN_URL,
                     data={
@@ -136,13 +178,14 @@ class LinkedInService:
             expires_at = utc_now() + timedelta(
                 seconds=token_data.get("expires_in", 5184000)  # Default 60 days
             )
+            granted_scopes = self._normalize_scopes(token_data.get("scope"))
             
             data_payload = {
                 "user_id": user_id,
                 "access_token": token_data["access_token"],
                 "refresh_token": token_data.get("refresh_token"),
                 "expires_at": expires_at.isoformat(),
-                "scope": " ".join(self.scopes)
+                "scope": " ".join(granted_scopes or self.scopes)
             }
             
             # Upsert on unique user_id to avoid insert/update race conditions.
@@ -221,18 +264,18 @@ class LinkedInService:
             User profile data
         """
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=self.HTTP_TIMEOUT) as client:
                 response = await client.get(
-                    f"{self.API_BASE}/me",
+                    self.USERINFO_URL,
                     headers={"Authorization": f"Bearer {access_token}"}
                 )
 
                 if response.is_success:
                     return self._safe_json(response)
 
-                # Fallback to OIDC userinfo endpoint (provides `sub`).
+                # Fallback to legacy profile endpoint for older applications.
                 fallback = await client.get(
-                    self.USERINFO_URL,
+                    f"{self.API_BASE}/me",
                     headers={"Authorization": f"Bearer {access_token}"}
                 )
                 fallback.raise_for_status()
@@ -259,10 +302,10 @@ class LinkedInService:
         }
 
         organizations: List[Dict[str, Any]] = []
-        seen_ids: set[str] = set()
+        seen_ids: Set[str] = set()
 
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=self.HTTP_TIMEOUT) as client:
                 response = await client.get(
                     f"{self.API_BASE}/organizationalEntityAcls",
                     params=params,
@@ -346,7 +389,7 @@ class LinkedInService:
                     "connected": False,
                     "profile": None,
                     "organizations": [],
-                    "scopes": (token_data.get("scope") or "").split()
+                    "scopes": self._normalize_scopes(token_data.get("scope"))
                 }
 
             access_token = token_data.get("access_token")
@@ -355,47 +398,64 @@ class LinkedInService:
                     "connected": False,
                     "profile": None,
                     "organizations": [],
-                    "scopes": (token_data.get("scope") or "").split()
+                    "scopes": self._normalize_scopes(token_data.get("scope"))
                 }
 
-            raw_profile = await self.get_user_profile(access_token)
+            scopes = self._normalize_scopes(token_data.get("scope"))
+            raw_profile: Dict[str, Any] = {}
+            organizations: List[Dict[str, Any]] = []
 
-            profile_id = (
-                raw_profile.get("sub")
-                or raw_profile.get("id")
-                or ""
-            )
-            profile_name = (
-                raw_profile.get("name")
-                or (
-                    f"{raw_profile.get('localizedFirstName', '')} "
-                    f"{raw_profile.get('localizedLastName', '')}"
-                ).strip()
-                or "LinkedIn User"
-            )
-            profile_email = (
-                raw_profile.get("email")
-                or raw_profile.get("emailAddress")
-            )
+            try:
+                if self._has_organization_scopes(scopes):
+                    raw_profile, organizations = await asyncio.gather(
+                        self.get_user_profile(access_token),
+                        self.get_managed_organizations(access_token)
+                    )
+                else:
+                    raw_profile = await self.get_user_profile(access_token)
+            except Exception as metadata_error:
+                logger.warning(
+                    f"LinkedIn metadata lookup failed for user {user_id}: {metadata_error}"
+                )
 
-            profile_picture = (
-                raw_profile.get("picture")
-                or raw_profile.get("profilePicture")
-            )
+            profile = None
+            if raw_profile:
+                profile_id = (
+                    raw_profile.get("sub")
+                    or raw_profile.get("id")
+                    or ""
+                )
+                profile_name = (
+                    raw_profile.get("name")
+                    or (
+                        f"{raw_profile.get('localizedFirstName', '')} "
+                        f"{raw_profile.get('localizedLastName', '')}"
+                    ).strip()
+                    or "LinkedIn User"
+                )
+                profile_email = (
+                    raw_profile.get("email")
+                    or raw_profile.get("emailAddress")
+                )
 
-            organizations = await self.get_managed_organizations(access_token)
+                profile_picture = (
+                    raw_profile.get("picture")
+                    or raw_profile.get("profilePicture")
+                )
 
-            return {
-                "connected": True,
-                "profile": {
+                profile = {
                     "id": str(profile_id),
                     "name": str(profile_name),
                     "email": str(profile_email) if profile_email else None,
                     "picture_url": str(profile_picture) if profile_picture else None,
                     "urn": f"urn:li:person:{profile_id}" if profile_id else None,
-                },
+                }
+
+            return {
+                "connected": True,
+                "profile": profile,
                 "organizations": organizations,
-                "scopes": (token_data.get("scope") or "").split()
+                "scopes": scopes
             }
 
         except Exception as e:

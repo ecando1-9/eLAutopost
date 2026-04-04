@@ -53,6 +53,29 @@ from ..middleware.admin_auth import get_current_user_id
 router = APIRouter()
 
 
+def _frontend_base_url() -> str:
+    """Resolve the frontend base URL used for OAuth redirects."""
+    if settings.FRONTEND_APP_URL:
+        return settings.FRONTEND_APP_URL.rstrip("/")
+
+    if settings.BACKEND_CORS_ORIGINS:
+        return settings.BACKEND_CORS_ORIGINS[0].rstrip("/")
+
+    return "http://localhost:3000"
+
+
+def _frontend_redirect(path: str, **query_params: Optional[str]) -> str:
+    """Build a frontend redirect URL with optional query params."""
+    normalized_path = path if path.startswith("/") else f"/{path}"
+    filtered_params = {
+        key: value
+        for key, value in query_params.items()
+        if value not in (None, "")
+    }
+    query = urlencode(filtered_params)
+    return f"{_frontend_base_url()}{normalized_path}" + (f"?{query}" if query else "")
+
+
 # =============================================================================
 # EMAIL/PASSWORD AUTHENTICATION
 # =============================================================================
@@ -231,7 +254,7 @@ async def google_auth(request: Request):
     
     Redirects user to Supabase OAuth (Google provider).
     """
-    redirect_to = f"{settings.BACKEND_CORS_ORIGINS[0]}/auth/v1/callback"
+    redirect_to = _frontend_redirect("/auth/v1/callback")
     query = urlencode(
         {
             "provider": "google",
@@ -253,7 +276,7 @@ async def google_callback(request: Request, code: str, state: str):
     Google OAuth is handled through Supabase callback flow.
     """
     logger.info("Legacy /google/callback hit; redirecting to frontend login flow")
-    return RedirectResponse(url=f"{settings.BACKEND_CORS_ORIGINS[0]}/login")
+    return RedirectResponse(url=_frontend_redirect("/login"))
 
 
 # =============================================================================
@@ -303,7 +326,12 @@ async def linkedin_callback(
         if error:
             logger.error(f"LinkedIn OAuth error: {error} - {error_description}")
             return RedirectResponse(
-                url=f"{settings.BACKEND_CORS_ORIGINS[0]}/settings?linkedin=error&detail={error}"
+                url=_frontend_redirect(
+                    "/settings",
+                    linkedin="error",
+                    detail=error,
+                    description=error_description,
+                )
             )
 
         if not code or not state:
@@ -341,13 +369,13 @@ async def linkedin_callback(
         
         # Redirect to frontend success page
         return RedirectResponse(
-            url=f"{settings.BACKEND_CORS_ORIGINS[0]}/dashboard?linkedin=connected"
+            url=_frontend_redirect("/settings", linkedin="connected")
         )
         
     except Exception as e:
         logger.error(f"LinkedIn callback failed: {e}")
         return RedirectResponse(
-            url=f"{settings.BACKEND_CORS_ORIGINS[0]}/dashboard?linkedin=error"
+            url=_frontend_redirect("/settings", linkedin="error")
         )
 
 

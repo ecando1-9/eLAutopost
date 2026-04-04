@@ -44,6 +44,7 @@ class Settings(BaseSettings):
         default=["http://localhost:3000"],
         env="BACKEND_CORS_ORIGINS"
     )
+    FRONTEND_APP_URL: Optional[str] = Field(default=None, env="FRONTEND_APP_URL")
     
     # =============================================================================
     # SUPABASE CONFIGURATION
@@ -78,6 +79,9 @@ class Settings(BaseSettings):
     LINKEDIN_CLIENT_ID: Optional[str] = Field(default=None, env="LINKEDIN_CLIENT_ID")
     LINKEDIN_CLIENT_SECRET: Optional[str] = Field(default=None, env="LINKEDIN_CLIENT_SECRET")
     LINKEDIN_REDIRECT_URI: Optional[str] = Field(default=None, env="LINKEDIN_REDIRECT_URI")
+    LINKEDIN_ENABLE_ORGANIZATION_SCOPES: bool = Field(
+        default=False, env="LINKEDIN_ENABLE_ORGANIZATION_SCOPES"
+    )
     LINKEDIN_ORGANIZATION_ID: Optional[str] = Field(
         default=None, env="LINKEDIN_ORGANIZATION_ID"
     )
@@ -122,11 +126,28 @@ class Settings(BaseSettings):
         Parse CORS origins from string or list.
         Supports comma-separated string from environment variables.
         """
+        def normalize_origins(origins):
+            normalized = []
+            for origin in origins:
+                cleaned_origin = str(origin).strip().rstrip("/")
+                if cleaned_origin:
+                    normalized.append(cleaned_origin)
+            return normalized or ["http://localhost:3000"]
+
         if isinstance(v, str):
             # Strip brackets and quotes if present (JSON-like strings)
             cleaned = v.strip().lstrip("[").rstrip("]").replace("\"", "").replace("'", "")
-            return [origin.strip() for origin in cleaned.split(",")]
-        return v
+            return normalize_origins(cleaned.split(","))
+        return normalize_origins(v)
+
+    @field_validator("FRONTEND_APP_URL")
+    def normalize_frontend_app_url(cls, v):
+        """Normalize explicit frontend app URL when provided."""
+        if v is None:
+            return v
+
+        normalized = str(v).strip().rstrip("/")
+        return normalized or None
 
     @model_validator(mode="after")
     def require_sensitive_fields(cls, values):

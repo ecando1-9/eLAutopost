@@ -125,6 +125,7 @@ const TIMEZONES = [
     'Australia/Sydney',
 ];
 const PREFERENCES_KEY = 'elautopost.preferences.v1';
+const LINKEDIN_ORGANIZATION_SCOPES = ['w_organization_social', 'rw_organization_admin'];
 
 async function readErrorMessage(response: Response): Promise<string> {
     const raw = await response.text();
@@ -140,6 +141,26 @@ async function readErrorMessage(response: Response): Promise<string> {
     }
 
     return raw;
+}
+
+function hasLinkedInOrganizationAccess(scopes: string[]): boolean {
+    return scopes.some((scope) => LINKEDIN_ORGANIZATION_SCOPES.includes(scope));
+}
+
+function formatLinkedInAuthError(detail?: string | null, description?: string | null): string {
+    if (detail === 'unauthorized_scope_error') {
+        return 'LinkedIn rejected organization/page permissions for this app. Profile posting can work with standard member scopes, but Company Page posting needs extra LinkedIn approval and a reconnect.';
+    }
+
+    if (description) {
+        return `LinkedIn connection failed: ${description}`;
+    }
+
+    if (detail) {
+        return `LinkedIn connection failed: ${detail.replace(/_/g, ' ')}`;
+    }
+
+    return 'LinkedIn connection failed. Please try again.';
 }
 
 const EMOJI_LEVELS = ['None', 'Low', 'Medium', 'High'];
@@ -243,6 +264,10 @@ export default function SettingsPage() {
             organizationId,
         ]
     );
+    const hasOrganizationPostingAccess = useMemo(
+        () => hasLinkedInOrganizationAccess(linkedinScopes),
+        [linkedinScopes]
+    );
 
     const setupScore = setupChecks.filter((check) => check.done).length;
     const visibleCategories = showAllCategories
@@ -294,14 +319,42 @@ export default function SettingsPage() {
     useEffect(() => {
         const load = async () => {
             try {
-                const { data } = await supabase.auth.getSession();
-                if (!data.session) {
+                const { data: { session } } = await supabase.auth.getSession();
+                if (!session) {
                     router.push('/login');
                     return;
                 }
 
-                const { data: { session } } = await supabase.auth.getSession();
-                const token = session?.access_token;
+                if (typeof window !== 'undefined') {
+                    const params = new URLSearchParams(window.location.search);
+                    const linkedinStatus = params.get('linkedin');
+                    const linkedinDetail = params.get('detail');
+                    const linkedinDescription = params.get('description');
+
+                    if (linkedinStatus === 'connected') {
+                        setSuccessMessage('LinkedIn connected successfully.');
+                        setErrorMessage('');
+                    } else if (linkedinStatus === 'error') {
+                        setSuccessMessage('');
+                        setErrorMessage(
+                            formatLinkedInAuthError(linkedinDetail, linkedinDescription)
+                        );
+                    }
+
+                    if (params.has('linkedin') || params.has('detail') || params.has('description')) {
+                        params.delete('linkedin');
+                        params.delete('detail');
+                        params.delete('description');
+                        const nextSearch = params.toString();
+                        window.history.replaceState(
+                            {},
+                            '',
+                            nextSearch ? `/settings?${nextSearch}` : '/settings'
+                        );
+                    }
+                }
+
+                const token = session.access_token;
 
                 const [profileRes, settingsRes, scheduleRes] = await Promise.all([
                     fetch('/api/v1/auth/me', { 
@@ -396,10 +449,10 @@ export default function SettingsPage() {
                     console.error('Failed to read local preferences:', error);
                 }
 
-                await loadLinkedInTargets();
+                void loadLinkedInTargets();
             } catch (error) {
                 console.error('Failed to load settings:', error);
-                setErrorMessage('Failed to load settings. Please refresh.');
+                setErrorMessage((current) => current || 'Failed to load settings. Please refresh.');
             } finally {
                 setLoading(false);
             }
@@ -639,12 +692,22 @@ export default function SettingsPage() {
                                     </button>
 
                                     {isLinkedInConnected ? (
-                                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
-                                            <CheckCircle2 className="h-3.5 w-3.5" />
-                                            Connected
-                                        </span>
+                                        <>
+                                            <button
+                                                type="button"
+                                                onClick={handleConnectLinkedIn}
+                                                className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-800 hover:bg-sky-100 transition-colors"
+                                            >
+                                                Reconnect
+                                            </button>
+                                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
+                                                <CheckCircle2 className="h-3.5 w-3.5" />
+                                                Connected
+                                            </span>
+                                        </>
                                     ) : (
                                         <button
+                                            type="button"
                                             onClick={handleConnectLinkedIn}
                                             className="rounded-lg bg-sky-700 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-800 transition-colors"
                                         >
@@ -667,6 +730,18 @@ export default function SettingsPage() {
                                             </p>
                                         </div>
                                     </div>
+                                </div>
+                            )}
+
+                            {isLinkedInConnected && !hasOrganizationPostingAccess && (
+                                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                                    <p className="text-xs font-semibold text-amber-900 mb-1">
+                                        Personal profile posting is ready.
+                                    </p>
+                                    <p className="text-xs text-amber-800">
+                                        Company Page posting is not enabled for this LinkedIn app yet. To use Page or Both targets,
+                                        enable LinkedIn organization permissions for this app and then click Reconnect.
+                                    </p>
                                 </div>
                             )}
 
@@ -1024,6 +1099,11 @@ export default function SettingsPage() {
 
                         <div className="rounded-xl border border-slate-200 p-3 mb-4">
                             <p className="text-sm font-semibold text-slate-900 mb-2">Default LinkedIn Posting Target</p>
+                            {isLinkedInConnected && !hasOrganizationPostingAccess && (
+                                <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                                    Page targets need `w_organization_social` and `rw_organization_admin` approval in the LinkedIn Developer Portal.
+                                </div>
+                            )}
                             <div className="grid grid-cols-3 gap-2 mb-3">
                                 {[
                                     { id: 'person', label: 'Profile' },

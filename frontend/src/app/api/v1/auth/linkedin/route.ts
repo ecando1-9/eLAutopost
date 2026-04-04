@@ -14,7 +14,7 @@ export async function GET(_request: Request) {
         const { data: { session } } = await supabase.auth.getSession();
 
         if (!session) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+            return NextResponse.redirect(new URL('/login', _request.url));
         }
 
         const redirectUrl = `${BACKEND_URL}/auth/linkedin?user_id=${session.user.id}`;
