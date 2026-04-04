@@ -1186,7 +1186,7 @@ export default function SettingsPage() {
                         <div className="rounded-xl bg-slate-100 p-3 flex items-start gap-2">
                             <CalendarDays className="h-4 w-4 text-slate-600 mt-0.5" />
                             <p className="text-xs text-slate-600">
-                                The scheduler adds a small random offset (+/- 20 minutes) to make posts look natural.
+                                Posts are scheduled at your exact selected times. After saving, new auto-generated scheduled posts may take a short moment to appear.
                             </p>
                         </div>
                     </section>

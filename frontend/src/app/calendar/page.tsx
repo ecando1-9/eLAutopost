@@ -251,6 +251,13 @@ export default function ContentCalendarPage() {
                                 </button>
                             </div>
 
+                            {scheduleMeta?.is_active && timelineSlots.length > 0 && selectedDayPosts.length === 0 && (
+                                <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800 flex items-start gap-2">
+                                    <Sparkles className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                                    Auto-post is enabled for these slots. If you just saved Settings, scheduled posts can take a short moment to appear while the generator prepares content.
+                                </div>
+                            )}
+
                             {/* Engagement Summary for Post-Only Days */}
                             {selectedDayPosts.some(p => p.status === 'posted') && (
                                 <div className="grid grid-cols-2 gap-4 mb-6">

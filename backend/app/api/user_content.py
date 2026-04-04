@@ -28,6 +28,7 @@ from ..core.config import logger
 from ..core.datetime_utils import is_future_datetime, utc_now
 from ..services.content_queue import queue_service
 from ..services.scheduler import scheduler_service
+from ..worker.auto_generator import auto_generator_worker
 from ..middleware.admin_auth import get_current_user_id
 from ..middleware.rate_limit import limiter
 
@@ -196,9 +197,20 @@ async def update_user_schedule(
         except Exception as e:
             logger.error(f"Failed to queue rescheduling task: {e}")
 
+        if body.is_active and body.auto_topic:
+            try:
+                asyncio.create_task(auto_generator_worker.process_auto_generation())
+            except Exception as e:
+                logger.error(f"Failed to queue auto-generation task: {e}")
+
         return {
             "success": True,
-            "message": "Schedule updated successfully",
+            "message": (
+                "Schedule updated successfully. "
+                "Auto-generation has been queued for your upcoming slots."
+                if body.is_active and body.auto_topic
+                else "Schedule updated successfully"
+            ),
             "schedule": schedule
         }
 
