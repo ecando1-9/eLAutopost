@@ -33,9 +33,8 @@ export async function GET(request: Request) {
         });
 
         if (!response.ok) {
-            const errorText = await response.text();
             return NextResponse.json(
-                { error: 'Failed to fetch queue', details: errorText },
+                { error: 'Failed to fetch queue' },
                 { status: response.status }
             );
         }

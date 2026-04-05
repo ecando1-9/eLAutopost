@@ -657,6 +657,8 @@ async def ai_rewrite_post(
             f"Current hook: {post.get('hook', '')}",
             f"Current caption: {post.get('caption', '')}",
             "Keep the content high-quality, specific, and ready to publish on LinkedIn.",
+            "Treat the user's rewrite direction as the highest priority instruction.",
+            "If the user's rewrite direction changes the audience, tone, angle, or perspective, follow that direction even when it conflicts with saved defaults.",
         ]
         if rewrite_prompt:
             instructions_parts.append(f"User direction for this rewrite: {rewrite_prompt}")

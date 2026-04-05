@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
+import { ensureSameOrigin } from '@/app/api/_lib/security';
 
 const RAW_BACKEND_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').trim();
 const BACKEND_URL = RAW_BACKEND_URL.endsWith('/api/v1')
@@ -48,6 +49,11 @@ export async function GET(_request: Request, { params }: RouteParams) {
 
 export async function PATCH(request: Request, { params }: RouteParams) {
     try {
+        const sameOriginError = ensureSameOrigin(request);
+        if (sameOriginError) {
+            return sameOriginError;
+        }
+
         const session = await getSessionOrUnauthorized();
         if (!session) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -79,6 +85,11 @@ export async function PATCH(request: Request, { params }: RouteParams) {
 
 export async function DELETE(_request: Request, { params }: RouteParams) {
     try {
+        const sameOriginError = ensureSameOrigin(_request);
+        if (sameOriginError) {
+            return sameOriginError;
+        }
+
         const session = await getSessionOrUnauthorized();
         if (!session) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

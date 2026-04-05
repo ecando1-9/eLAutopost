@@ -2,6 +2,31 @@ import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
+function applySecurityHeaders(response: NextResponse) {
+    response.headers.set('X-Frame-Options', 'DENY');
+    response.headers.set('X-Content-Type-Options', 'nosniff');
+    response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+    response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    response.headers.set('Cross-Origin-Opener-Policy', 'same-origin');
+    response.headers.set('Cross-Origin-Resource-Policy', 'same-site');
+    response.headers.set(
+        'Content-Security-Policy',
+        [
+            "default-src 'self'",
+            "base-uri 'self'",
+            "frame-ancestors 'none'",
+            "object-src 'none'",
+            "form-action 'self'",
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+            "style-src 'self' 'unsafe-inline'",
+            "img-src 'self' data: blob: https:",
+            "font-src 'self' data: https:",
+            "connect-src 'self' https://*.supabase.co https://api.openai.com https://generativelanguage.googleapis.com https://api.linkedin.com https://www.linkedin.com",
+        ].join('; ')
+    );
+    return response;
+}
+
 export async function middleware(req: NextRequest) {
     const res = NextResponse.next();
     const supabase = createMiddlewareClient({ req, res });
@@ -24,7 +49,7 @@ export async function middleware(req: NextRequest) {
     if (!session && !isPublicRoute) {
         const redirectUrl = req.nextUrl.clone();
         redirectUrl.pathname = pathname.startsWith('/admin') ? '/admin/login' : '/login';
-        return NextResponse.redirect(redirectUrl);
+        return applySecurityHeaders(NextResponse.redirect(redirectUrl));
     }
 
     // If authenticated and trying to access login/public pages, redirect to dashboard
@@ -32,10 +57,10 @@ export async function middleware(req: NextRequest) {
         const redirectUrl = req.nextUrl.clone();
         if (pathname.startsWith('/admin/login')) {
             redirectUrl.pathname = '/admin/dashboard';
-            return NextResponse.redirect(redirectUrl);
+            return applySecurityHeaders(NextResponse.redirect(redirectUrl));
         }
         redirectUrl.pathname = '/dashboard';
-        return NextResponse.redirect(redirectUrl);
+        return applySecurityHeaders(NextResponse.redirect(redirectUrl));
     }
 
     // Protect admin routes - require authenticated session.
@@ -45,7 +70,7 @@ export async function middleware(req: NextRequest) {
             // Not logged in - redirect to admin login
             const redirectUrl = req.nextUrl.clone();
             redirectUrl.pathname = '/admin/login';
-            return NextResponse.redirect(redirectUrl);
+            return applySecurityHeaders(NextResponse.redirect(redirectUrl));
         }
     }
 
@@ -53,7 +78,7 @@ export async function middleware(req: NextRequest) {
     if (pathname === '/admin' || pathname === '/admin/') {
         const redirectUrl = req.nextUrl.clone();
         redirectUrl.pathname = session ? '/admin/dashboard' : '/admin/login';
-        return NextResponse.redirect(redirectUrl);
+        return applySecurityHeaders(NextResponse.redirect(redirectUrl));
     }
 
     // Protect user routes - require authentication
@@ -63,10 +88,10 @@ export async function middleware(req: NextRequest) {
     if (isUserRoute && !session) {
         const redirectUrl = req.nextUrl.clone();
         redirectUrl.pathname = '/login';
-        return NextResponse.redirect(redirectUrl);
+        return applySecurityHeaders(NextResponse.redirect(redirectUrl));
     }
 
-    return res;
+    return applySecurityHeaders(res);
 }
 
 export const config = {

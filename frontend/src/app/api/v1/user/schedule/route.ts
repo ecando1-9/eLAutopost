@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
+import { ensureSameOrigin } from '@/app/api/_lib/security';
 
 const RAW_BACKEND_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').trim();
 const BACKEND_URL = RAW_BACKEND_URL.endsWith('/api/v1')
@@ -25,9 +26,8 @@ export async function GET(_request: Request) {
         });
 
         if (!response.ok) {
-            const errorText = await response.text();
             return NextResponse.json(
-                { error: 'Failed to fetch schedule', details: errorText },
+                { error: 'Failed to fetch schedule' },
                 { status: response.status }
             );
         }
@@ -42,6 +42,11 @@ export async function GET(_request: Request) {
 
 export async function POST(request: Request) {
     try {
+        const sameOriginError = ensureSameOrigin(request);
+        if (sameOriginError) {
+            return sameOriginError;
+        }
+
         const supabase = createRouteHandlerClient({ cookies });
         const { data: { session } } = await supabase.auth.getSession();
 
@@ -61,9 +66,8 @@ export async function POST(request: Request) {
         });
 
         if (!response.ok) {
-            const errorText = await response.text();
             return NextResponse.json(
-                { error: 'Failed to update schedule', details: errorText },
+                { error: 'Failed to update schedule' },
                 { status: response.status }
             );
         }

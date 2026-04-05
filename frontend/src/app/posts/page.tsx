@@ -114,6 +114,28 @@ function getScheduleButtonLabel(post: Post): string {
     return 'Schedule';
 }
 
+async function readResponseError(response: Response, fallback: string): Promise<string> {
+    const text = await response.text().catch(() => '');
+    if (!text) {
+        return fallback;
+    }
+
+    if (text.trim().startsWith('<!DOCTYPE html')) {
+        return fallback;
+    }
+
+    try {
+        const parsed = JSON.parse(text);
+        if (typeof parsed.detail === 'string') return parsed.detail;
+        if (typeof parsed.error === 'string') return parsed.error;
+        if (typeof parsed.message === 'string') return parsed.message;
+    } catch {
+        return text;
+    }
+
+    return fallback;
+}
+
 export default function PostsPage() {
     const router = useRouter();
     const supabase = createClientComponentClient();
@@ -295,16 +317,7 @@ export default function PostsPage() {
             }
 
             if (!response.ok) {
-                let errorMsg = `Failed to ${action} post`;
-                const text = await response.text().catch(() => '');
-                if (text) {
-                    try {
-                        const errData = JSON.parse(text);
-                        errorMsg = errData.detail || errData.error || errData.message || errorMsg;
-                    } catch {
-                        errorMsg = text;
-                    }
-                }
+                const errorMsg = await readResponseError(response, `Failed to ${action} post`);
                 toast.error(errorMsg);
                 throw new Error(errorMsg);
             }
@@ -387,8 +400,7 @@ export default function PostsPage() {
             });
 
             if (!response.ok) {
-                const text = await response.text().catch(() => '');
-                throw new Error(text || 'Failed to save post changes');
+                throw new Error(await readResponseError(response, 'Failed to save post changes'));
             }
 
             toast.success('Post content updated.');
@@ -425,8 +437,7 @@ export default function PostsPage() {
             });
 
             if (!response.ok) {
-                const text = await response.text().catch(() => '');
-                throw new Error(text || 'Failed to rewrite post');
+                throw new Error(await readResponseError(response, 'Failed to rewrite post'));
             }
 
             const updatedPost: Post = await response.json();

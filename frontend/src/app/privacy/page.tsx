@@ -78,7 +78,7 @@ export default function PrivacyPolicyPage() {
                     ].map(({ title, body }) => (
                         <div key={title} className="rounded-2xl border border-white/[0.07] bg-white/[0.04] p-6">
                             <h2 className="mb-3 text-base font-bold text-white">{title}</h2>
-                            <p dangerouslySetInnerHTML={{ __html: body }} />
+                            <p>{body}</p>
                         </div>
                     ))}
                 </div>

@@ -25,9 +25,8 @@ export async function GET(_request: Request) {
         });
 
         if (!response.ok) {
-            const errorText = await response.text();
             return NextResponse.json(
-                { error: 'Failed to fetch user profile', details: errorText },
+                { error: 'Failed to fetch user profile' },
                 { status: response.status }
             );
         }

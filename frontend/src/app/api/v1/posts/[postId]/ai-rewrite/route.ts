@@ -30,22 +30,17 @@ export async function POST(request: Request, { params }: RouteParams) {
         }
 
         const body = await request.json().catch(() => ({}));
-        const target = typeof body.target === 'string' ? body.target : 'person';
-        const organizationId = typeof body.organization_id === 'string' ? body.organization_id : '';
-
-        const backendUrl = new URL(`${BACKEND_URL}/posts/${params.postId}/publish`);
-        backendUrl.searchParams.set('user_id', session.user.id);
-        backendUrl.searchParams.set('target', target);
-        if (organizationId) {
-            backendUrl.searchParams.set('organization_id', organizationId);
-        }
-
-        const response = await fetch(backendUrl.toString(), {
-            method: 'POST',
-            headers: {
-                Authorization: `Bearer ${session.access_token}`,
-            },
-        });
+        const response = await fetch(
+            `${BACKEND_URL}/posts/${params.postId}/ai-rewrite?user_id=${session.user.id}`,
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${session.access_token}`,
+                },
+                body: JSON.stringify(body),
+            }
+        );
 
         const text = await response.text();
         return new NextResponse(text, {
@@ -53,7 +48,7 @@ export async function POST(request: Request, { params }: RouteParams) {
             headers: { 'Content-Type': response.headers.get('content-type') || 'application/json' },
         });
     } catch (error: any) {
-        console.error('Error publishing post:', error);
+        console.error('Error rewriting post with AI:', error);
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 }

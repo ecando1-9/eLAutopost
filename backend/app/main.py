@@ -160,7 +160,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         content={
             "error": "Validation Error",
             "message": "Invalid request data. Please check your input.",
-            "details": exc.errors()
+            **({"details": exc.errors()} if settings.DEBUG else {})
         }
     )
 
