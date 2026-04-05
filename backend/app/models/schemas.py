@@ -16,6 +16,7 @@ from typing import Optional, List, Literal
 from datetime import datetime
 from enum import Enum
 from ..core.security import sanitize_input, validate_email
+from ..core.text_utils import strip_markdown_formatting
 
 
 # =============================================================================
@@ -208,7 +209,7 @@ class LinkedInPostRequest(BaseModel):
         """Sanitize caption while preserving formatting."""
         # LinkedIn allows some formatting, so we're more lenient here
         # but still prevent script injection
-        return sanitize_input(v, max_length=3000)
+        return strip_markdown_formatting(sanitize_input(v, max_length=3000))
 
 
 class LinkedInPostResponse(BaseModel):
@@ -244,7 +245,7 @@ class PostCreate(BaseModel):
     @validator("topic", "hook", "image_prompt", "caption")
     def sanitize_fields(cls, v):
         """Sanitize all text fields."""
-        return sanitize_input(v)
+        return strip_markdown_formatting(sanitize_input(v))
 
     @validator("organization_id")
     def sanitize_organization_id(cls, v):
@@ -266,7 +267,7 @@ class PostUpdate(BaseModel):
     def sanitize_fields(cls, v):
         """Sanitize text fields."""
         if v:
-            return sanitize_input(v)
+            return strip_markdown_formatting(sanitize_input(v))
         return v
 
     @validator("organization_id")

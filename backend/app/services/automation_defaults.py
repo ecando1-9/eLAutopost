@@ -7,6 +7,7 @@ import random
 import re
 
 from ..core.config import logger
+from ..core.text_utils import strip_markdown_formatting
 from ..services.database import supabase_client
 
 
@@ -189,9 +190,9 @@ def build_topic_from_category(
 
 def compose_linkedin_caption(generated: Any) -> str:
     """Normalize AI output into a clean LinkedIn caption."""
-    hook = str(getattr(generated, "hook", "") or "").strip()
-    body = str(getattr(generated, "caption", "") or "").strip()
-    cta = str(getattr(generated, "cta", "") or "").strip()
+    hook = strip_markdown_formatting(getattr(generated, "hook", "")).strip()
+    body = strip_markdown_formatting(getattr(generated, "caption", "")).strip()
+    cta = strip_markdown_formatting(getattr(generated, "cta", "")).strip()
 
     if hook and body.lower().startswith(hook.lower()):
         body = body[len(hook):].strip().lstrip(".: \n")

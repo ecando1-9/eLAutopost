@@ -23,6 +23,7 @@ except Exception:
     types = None
 from ..core.config import settings, logger
 from ..core.security import sanitize_input
+from ..core.text_utils import strip_markdown_formatting
 from ..models.schemas import ContentType, GeneratedContent
 import re
 import asyncio
@@ -136,6 +137,7 @@ EMOJI RULES:
 - Use emojis strategically to break up text and add visual interest.
 - Place emojis at the start of bullet points or at the end of punchy sentences.
 - Avoid emoji-stuffing; use 3-8 per post maximum.
+- DO NOT use markdown formatting like **bold**, *italic*, `code`, or markdown headings.
 
 HOOK RULES (Critical — this determines if anyone reads):
 - Hook must be 3-7 words max
@@ -152,6 +154,7 @@ CAPTION (BODY) RULES:
 - DO NOT start with the hook.
 - DO NOT include the engagement question (CTA).
 - DO NOT include hashtags.
+- Write plain LinkedIn text only. Never use markdown markers such as **, __, *, _, or backticks for styling.
 - Use short bursts: max 2-3 lines per paragraph.
 - Use line breaks generously for scannability.
 - Include a relatable story or specific data point.
@@ -241,13 +244,23 @@ Respond ONLY with valid JSON. No markdown wrapping. No explanations.
                     content_type=type_mapping.get(raw_type, ContentType.INSIGHT)
                 )
             
+            cleaned_hook_variations = [
+                strip_markdown_formatting(item)
+                for item in (content_json.get("hook_variations", []) or [])
+                if str(item or "").strip()
+            ]
+            cleaned_slides = [
+                strip_markdown_formatting(item)
+                for item in (content_json.get("slides", []) or [])
+            ]
+
             return GeneratedContent(
-                hook=content_json.get("hook", ""),
-                hook_variations=content_json.get("hook_variations", []),
-                caption=content_json.get("caption", ""),
+                hook=strip_markdown_formatting(content_json.get("hook", "")),
+                hook_variations=cleaned_hook_variations,
+                caption=strip_markdown_formatting(content_json.get("caption", "")),
                 image_prompt=image_prompt,
-                slides=content_json.get("slides", []),
-                cta=content_json.get("cta", ""),
+                slides=cleaned_slides,
+                cta=strip_markdown_formatting(content_json.get("cta", "")),
                 hashtags=content_json.get("hashtags", []),
                 engagement_score=content_json.get("engagement_score", 80),
                 quality_score=content_json.get("quality_score", 85),
@@ -303,7 +316,7 @@ Respond ONLY with the hook."""
             hook = await self._async_generate(prompt, temperature=0.8)
             # Cleanup quotes if Gemini added them
             hook = hook.replace('"', '').replace("'", "")
-            return hook
+            return strip_markdown_formatting(hook)
         except:
             return "An important update to share"
 
@@ -319,7 +332,9 @@ Requirements:
 - Line breaks for readability
 Respond ONLY with the caption text."""
         try:
-            return await self._async_generate(prompt, temperature=0.7)
+            return strip_markdown_formatting(
+                await self._async_generate(prompt, temperature=0.7)
+            )
         except:
             return f"Sharing some thoughts on {topic}. What do you think?"
 

@@ -20,6 +20,7 @@ from typing import List, Dict, Any
 from datetime import timedelta
 from ..core.config import logger
 from ..core.datetime_utils import utc_now
+from ..core.text_utils import strip_markdown_formatting
 from ..services.database import supabase_client
 from ..services.scheduler import scheduler_service
 from ..services.linkedin import linkedin_service
@@ -157,10 +158,12 @@ class PostingWorker:
         retry_count = post.get("retry_count", 0)
 
         try:
+            clean_caption = strip_markdown_formatting(post["caption"])
+
             # Post to LinkedIn
             result = await linkedin_service.create_post(
                 user_id=user_id,
-                text=post["caption"],
+                text=clean_caption,
                 image_url=post.get("image_url"),
                 target=post.get("target"),
                 organization_id=post.get("organization_id")
@@ -170,6 +173,7 @@ class PostingWorker:
                 # Mark as posted
                 await self._mark_posted(
                     post_id=post_id,
+                    caption=clean_caption,
                     linkedin_post_id=result.get("post_id"),
                     linkedin_url=result.get("post_url")
                 )
@@ -208,6 +212,7 @@ class PostingWorker:
     async def _mark_posted(
         self,
         post_id: str,
+        caption: str,
         linkedin_post_id: str,
         linkedin_url: str
     ):
@@ -215,6 +220,7 @@ class PostingWorker:
         try:
             supabase_client.admin.table("posts").update({
                 "status": "posted",
+                "caption": caption,
                 "posted_at": utc_now().isoformat(),
                 "linkedin_post_id": linkedin_post_id,
                 "linkedin_url": linkedin_url,

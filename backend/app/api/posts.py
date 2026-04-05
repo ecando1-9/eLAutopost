@@ -31,6 +31,7 @@ from ..models.schemas import (
 )
 from ..core.config import logger
 from ..core.datetime_utils import utc_now, parse_datetime_utc
+from ..core.text_utils import strip_markdown_formatting
 from ..services.database import supabase_client, log_audit_event
 from ..services.linkedin import linkedin_service
 from ..core.security import get_client_ip
@@ -398,12 +399,13 @@ async def publish_to_linkedin(
             resolved_organization_id = organization_id or post.get("organization_id")
             if resolved_target not in {"person", "organization"}:
                 resolved_target = "person"
+            clean_caption = strip_markdown_formatting(post["caption"])
 
             # Post to LinkedIn
             if post["image_url"]:
                 linkedin_response = await linkedin_service.post_with_image(
                     user_id=user_id,
-                    text=post["caption"],
+                    text=clean_caption,
                     image_url=post["image_url"],
                     target=resolved_target,
                     organization_id=resolved_organization_id
@@ -411,7 +413,7 @@ async def publish_to_linkedin(
             else:
                 linkedin_response = await linkedin_service.post_text(
                     user_id=user_id,
-                    text=post["caption"],
+                    text=clean_caption,
                     target=resolved_target,
                     organization_id=resolved_organization_id
                 )
@@ -423,6 +425,7 @@ async def publish_to_linkedin(
             # Update post status to posted
             supabase_client.admin.table("posts").update({
                 "status": "posted",
+                "caption": clean_caption,
                 "posted_at": utc_now().isoformat(),
                 "linkedin_post_id": linkedin_post_id,
                 "linkedin_url": linkedin_url

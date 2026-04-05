@@ -45,14 +45,42 @@ interface Post {
     comments_count?: number;
 }
 
+const QUEUE_STATUSES = ['draft', 'pending_review', 'scheduled', 'running'] as const;
+
+type QueueFilter =
+    | 'all'
+    | 'queue'
+    | 'posted'
+    | 'scheduled'
+    | 'pending_review'
+    | 'draft'
+    | 'running'
+    | 'failed';
+
+function formatStatusLabel(status: QueueFilter): string {
+    if (status === 'all') return 'All';
+    if (status === 'queue') return 'Queue';
+    return status
+        .split('_')
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+}
+
+function formatPostStatusLabel(status: Post['status']): string {
+    return status
+        .split('_')
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+}
+
 export default function PostsPage() {
     const router = useRouter();
     const supabase = createClientComponentClient();
     const [posts, setPosts] = useState<Post[]>([]);
     const [loading, setLoading] = useState(true);
-    const [statusFilter, setStatusFilter] = useState<string>('all');
+    const [statusFilter, setStatusFilter] = useState<QueueFilter>('all');
     const [searchQuery, setSearchQuery] = useState('');
-    const [sortBy, setSortBy] = useState<'created' | 'scheduled'>('created');
+    const [sortBy, setSortBy] = useState<'generated' | 'scheduled'>('generated');
     const [actionPostId, setActionPostId] = useState<string | null>(null);
     const [previewPost, setPreviewPost] = useState<Post | null>(null);
     const [scheduleModal, setScheduleModal] = useState<Post | null>(null);
@@ -99,7 +127,12 @@ export default function PostsPage() {
 
         // 1. Status Filter
         if (statusFilter !== 'all') {
-            result = result.filter(p => p.status === statusFilter);
+            result = result.filter((post) => {
+                if (statusFilter === 'queue') {
+                    return QUEUE_STATUSES.includes(post.status as (typeof QUEUE_STATUSES)[number]);
+                }
+                return post.status === statusFilter;
+            });
         }
 
         // 2. Search Query
@@ -119,32 +152,53 @@ export default function PostsPage() {
                 const dateB = b.scheduled_at ? new Date(b.scheduled_at).getTime() : Infinity;
                 return dateA - dateB; // Soonest first
             } else {
-                return new Date(b.created_at).getTime() - new Date(a.created_at).getTime(); // Newest first
+                return new Date(b.created_at).getTime() - new Date(a.created_at).getTime(); // Latest generated first
             }
         });
 
         return result;
     }, [posts, statusFilter, searchQuery, sortBy]);
 
+    const filterCounts = useMemo(() => {
+        const queueCount = posts.filter((post) =>
+            QUEUE_STATUSES.includes(post.status as (typeof QUEUE_STATUSES)[number])
+        ).length;
+
+        return {
+            all: posts.length,
+            queue: queueCount,
+            posted: posts.filter((post) => post.status === 'posted').length,
+            scheduled: posts.filter((post) => post.status === 'scheduled').length,
+            pending_review: posts.filter((post) => post.status === 'pending_review').length,
+            draft: posts.filter((post) => post.status === 'draft').length,
+            running: posts.filter((post) => post.status === 'running').length,
+            failed: posts.filter((post) => post.status === 'failed').length,
+        } satisfies Record<QueueFilter, number>;
+    }, [posts]);
+
     const getStatusBadge = (status: string) => {
         const styles = {
             draft: 'bg-gray-100 text-gray-800 border-gray-200',
+            pending_review: 'bg-amber-100 text-amber-800 border-amber-200',
             scheduled: 'bg-blue-100 text-blue-800 border-blue-200',
+            running: 'bg-violet-100 text-violet-800 border-violet-200',
             posted: 'bg-green-100 text-green-800 border-green-200',
             failed: 'bg-red-100 text-red-800 border-red-200'
         };
 
         const icons = {
             draft: <Clock className="h-3 w-3" />,
+            pending_review: <Eye className="h-3 w-3" />,
             scheduled: <Calendar className="h-3 w-3" />,
+            running: <Loader2 className="h-3 w-3 animate-spin" />,
             posted: <CheckCircle2 className="h-3 w-3" />,
             failed: <XCircle className="h-3 w-3" />
         };
 
         return (
-            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium border ${styles[status as keyof typeof styles]}`}>
-                {icons[status as keyof typeof icons]}
-                {status.charAt(0).toUpperCase() + status.slice(1)}
+            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium border ${styles[status as keyof typeof styles] || styles.draft}`}>
+                {icons[status as keyof typeof icons] || icons.draft}
+                {formatPostStatusLabel(status as Post['status'])}
             </span>
         );
     };
@@ -329,16 +383,16 @@ export default function PostsPage() {
                         
                         <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl self-start">
                             <button
-                                onClick={() => setSortBy('created')}
-                                className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${sortBy === 'created' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                onClick={() => setSortBy('generated')}
+                                className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${sortBy === 'generated' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                             >
-                                <Clock className="h-3.5 w-3.5" /> Newest First
+                                <Clock className="h-3.5 w-3.5" /> Generated Time
                             </button>
                             <button
                                 onClick={() => setSortBy('scheduled')}
                                 className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${sortBy === 'scheduled' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                             >
-                                <Calendar className="h-3.5 w-3.5" /> Scheduled Next
+                                <Calendar className="h-3.5 w-3.5" /> Post Time
                             </button>
                         </div>
                     </div>
@@ -346,7 +400,7 @@ export default function PostsPage() {
                     <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide">
                         <Filter className="h-4 w-4 text-slate-400 shrink-0 mr-1" />
                         <div className="flex gap-1.5">
-                            {['all', 'pending_review', 'scheduled', 'posted', 'draft', 'failed'].map(status => (
+                            {(['all', 'queue', 'posted', 'scheduled', 'pending_review', 'draft', 'running', 'failed'] as QueueFilter[]).map((status) => (
                                 <button
                                     key={status}
                                     onClick={() => setStatusFilter(status)}
@@ -355,7 +409,7 @@ export default function PostsPage() {
                                             : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
                                         }`}
                                 >
-                                    {status === 'all' ? 'All' : status.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                                    {formatStatusLabel(status)} ({filterCounts[status]})
                                 </button>
                             ))}
                         </div>
@@ -412,9 +466,24 @@ export default function PostsPage() {
                                             <h3 className="text-lg font-semibold text-gray-900">{post.topic}</h3>
                                             {getStatusBadge(post.status)}
                                         </div>
-                                        <p className="text-sm text-gray-500">
-                                            Created {format(new Date(post.created_at), 'MMM d, yyyy HH:mm')}
-                                        </p>
+                                        <div className="flex flex-wrap items-center gap-2 text-sm text-gray-500">
+                                            <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700 border border-slate-200">
+                                                <Clock className="h-3 w-3" />
+                                                Generated {format(new Date(post.created_at), 'MMM d, yyyy HH:mm')}
+                                            </span>
+                                            {post.scheduled_at && (
+                                                <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 border border-blue-200">
+                                                    <Calendar className="h-3 w-3" />
+                                                    Post time {format(new Date(post.scheduled_at), 'MMM d, yyyy HH:mm')}
+                                                </span>
+                                            )}
+                                            {post.posted_at && (
+                                                <span className="inline-flex items-center gap-1 rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 border border-green-200">
+                                                    <CheckCircle2 className="h-3 w-3" />
+                                                    Posted {format(new Date(post.posted_at), 'MMM d, yyyy HH:mm')}
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
 
@@ -430,27 +499,11 @@ export default function PostsPage() {
                                     <p className="text-gray-700 line-clamp-3">{post.caption}</p>
                                 </div>
 
-                                {/* Scheduled Time */}
-                                {post.scheduled_at && (
-                                    <div className="mb-4 flex items-center text-sm text-gray-600">
-                                        <Clock className="h-4 w-4 mr-2" />
-                                        Scheduled for {format(new Date(post.scheduled_at), 'MMM d, yyyy HH:mm')}
-                                    </div>
-                                )}
-
                                 <div className="mb-4">
                                     <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200">
                                         Target: {post.target === 'organization' ? 'LinkedIn Page' : 'LinkedIn Profile'}
                                     </span>
                                 </div>
-
-                                {/* Posted Time */}
-                                {post.posted_at && (
-                                    <div className="mb-4 flex items-center text-sm text-green-600">
-                                        <CheckCircle2 className="h-4 w-4 mr-2" />
-                                        Posted on {format(new Date(post.posted_at), 'MMM d, yyyy HH:mm')}
-                                    </div>
-                                )}
 
                                 {/* Error Message */}
                                 {post.error_message && (
@@ -514,10 +567,24 @@ export default function PostsPage() {
                                             View Post
                                         </a>
                                     )}
+                                    {post.status === 'posted' && (
+                                        <div className="ml-auto flex items-center gap-3 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600 border border-slate-200">
+                                            <span className="inline-flex items-center gap-1">
+                                                <Heart className="h-4 w-4 text-pink-500" />
+                                                {post.likes_count || 0}
+                                            </span>
+                                            <span className="inline-flex items-center gap-1">
+                                                <MessageSquare className="h-4 w-4 text-sky-500" />
+                                                {post.comments_count || 0}
+                                            </span>
+                                        </div>
+                                    )}
                                     <button
                                         onClick={() => runPostAction(post.id, 'delete', post)}
                                         disabled={actionPostId === post.id}
-                                        className="flex items-center gap-2 px-4 py-2 text-sm bg-red-50 text-red-700 rounded-lg hover:bg-red-100 transition-colors ml-auto disabled:opacity-60"
+                                        className={`flex items-center gap-2 px-4 py-2 text-sm bg-red-50 text-red-700 rounded-lg hover:bg-red-100 transition-colors disabled:opacity-60 ${
+                                            post.status === 'posted' ? '' : 'ml-auto'
+                                        }`}
                                     >
                                         <Trash2 className="h-4 w-4" />
                                         Delete
