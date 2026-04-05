@@ -18,8 +18,10 @@ from ..services.automation_defaults import (
     build_generation_instructions,
     build_target_variants,
     build_topic_from_category,
+    count_visible_emojis,
     compose_linkedin_caption,
     load_user_automation_settings,
+    normalize_emoji_density,
 )
 from ..services.content_generation import content_service
 from ..services.database import supabase_client
@@ -234,7 +236,12 @@ class AutoGeneratorWorker:
 
         quality_score = int(getattr(generated, "quality_score", 0) or 0)
         caption_length = len(str(getattr(generated, "caption", "") or "").strip())
-        if quality_score >= 78 and caption_length >= 120:
+        emoji_density = normalize_emoji_density(user_settings.get("emoji_density"))
+        needs_emoji_retry = (
+            emoji_density == "High"
+            and count_visible_emojis(getattr(generated, "caption", "")) < 3
+        )
+        if quality_score >= 78 and caption_length >= 120 and not needs_emoji_retry:
             return generated
 
         retry = await content_service.generate_content(
@@ -247,6 +254,12 @@ class AutoGeneratorWorker:
                 instructions
                 + " Raise the specificity, practical value, and clarity. "
                 + "Use a sharper point of view and a more concrete example."
+                + (
+                    " Also make the emoji usage visibly match High emoji density "
+                    "with 4-6 relevant emojis across the caption."
+                    if emoji_density == "High"
+                    else ""
+                )
             ),
         )
 

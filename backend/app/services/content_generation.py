@@ -133,10 +133,18 @@ CONTEXT:
 - Tone: {tone}
 - Special Instructions: {instructions}
 
+SPECIAL INSTRUCTION PRIORITY:
+- Treat the Special Instructions as the highest-priority requirements.
+- If they specify emoji density, audience, formatting, hashtag behavior, or constraints, follow them exactly even when they override the generic defaults below.
+
 EMOJI RULES:
-- Use emojis strategically to break up text and add visual interest.
+- If Special Instructions request High emoji density, the caption must visibly contain multiple relevant emojis, usually 4-6 across the post.
+- If Special Instructions request Medium emoji density, use 2-4 relevant emojis.
+- If Special Instructions request Low emoji density, use only 1-2 subtle emojis.
+- If Special Instructions say no emojis or Emoji Density None, use zero emojis.
+- Otherwise, use emojis strategically to break up text and add visual interest.
 - Place emojis at the start of bullet points or at the end of punchy sentences.
-- Avoid emoji-stuffing; use 3-8 per post maximum.
+- Avoid emoji-stuffing.
 - DO NOT use markdown formatting like **bold**, *italic*, `code`, or markdown headings.
 
 HOOK RULES (Critical — this determines if anyone reads):

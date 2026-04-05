@@ -18,9 +18,11 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from contextlib import asynccontextmanager
 import time
+from datetime import timedelta
 
 from .core.config import settings, logger
 from .core.security import get_security_headers
+from .core.datetime_utils import utc_now
 from .middleware.rate_limit import setup_rate_limiting, limiter
 from .api import auth, content, posts, settings as settings_api, admin, user_content
 
@@ -47,26 +49,37 @@ async def lifespan(app: FastAPI):
     
     scheduler = AsyncIOScheduler()
     
-    # Schedule posting worker to run every 5 minutes
+    # Run immediately on startup and then every minute so posts land close to the saved slot.
     scheduler.add_job(
         posting_worker.process_due_posts,
         'interval',
-        minutes=5,
+        minutes=1,
         id='posting_worker',
-        replace_existing=True
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+        misfire_grace_time=55,
+        next_run_time=utc_now(),
     )
     
-    # Schedule auto-generator worker to run every 60 minutes
+    # Keep upcoming content generated ahead of time without waiting a full hour.
     scheduler.add_job(
         auto_generator_worker.process_auto_generation,
         'interval',
-        minutes=60,
+        minutes=15,
         id='auto_generator',
-        replace_existing=True
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+        misfire_grace_time=300,
+        next_run_time=utc_now() + timedelta(seconds=30),
     )
     
     scheduler.start()
-    logger.info("Background scheduler started - posting worker runs every 5 mins, auto-generator every arg 60 mins")
+    logger.info(
+        "Background scheduler started - posting worker runs every 1 min, "
+        "auto-generator every 15 mins"
+    )
     
     yield
     

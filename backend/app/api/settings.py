@@ -62,6 +62,8 @@ async def get_settings(
             default_goal=settings_data.get("default_goal", "Authority"),
             default_audience=settings_data.get("default_audience", "General Professionals"),
             default_style=settings_data.get("default_style", "Carousel slides"),
+            emoji_density=settings_data.get("emoji_density", "Medium"),
+            auto_format_reach=settings_data.get("auto_format_reach", True),
             publish_target=settings_data.get("publish_target", "person"),
             organization_id=settings_data.get("organization_id"),
             max_posts_per_day=settings_data.get("max_posts_per_day", 1),
@@ -111,6 +113,10 @@ async def update_settings(
             update_data["default_audience"] = settings_update.default_audience
         if settings_update.default_style is not None:
             update_data["default_style"] = settings_update.default_style
+        if settings_update.emoji_density is not None:
+            update_data["emoji_density"] = settings_update.emoji_density
+        if settings_update.auto_format_reach is not None:
+            update_data["auto_format_reach"] = settings_update.auto_format_reach
         if settings_update.publish_target is not None:
             update_data["publish_target"] = settings_update.publish_target
         if settings_update.organization_id is not None:
@@ -137,6 +143,8 @@ async def update_settings(
                     "preferred_content_types",
                     "max_posts_per_day",
                 }
+                # Later settings columns are intentionally excluded here so
+                # older databases can still save the legacy subset instead of failing.
                 fallback_update = {
                     key: value
                     for key, value in update_data.items()
@@ -166,6 +174,8 @@ async def update_settings(
             default_goal=updated_settings.get("default_goal", "Authority"),
             default_audience=updated_settings.get("default_audience", "General Professionals"),
             default_style=updated_settings.get("default_style", "Carousel slides"),
+            emoji_density=updated_settings.get("emoji_density", "Medium"),
+            auto_format_reach=updated_settings.get("auto_format_reach", True),
             publish_target=updated_settings.get("publish_target", "person"),
             organization_id=updated_settings.get("organization_id"),
             max_posts_per_day=updated_settings.get("max_posts_per_day", 1),
@@ -205,6 +215,8 @@ async def reset_settings(
             "default_goal": "Authority",
             "default_audience": "General Professionals",
             "default_style": "Carousel slides",
+            "emoji_density": "Medium",
+            "auto_format_reach": True,
             "publish_target": "person",
             "organization_id": None,
             "max_posts_per_day": 1,

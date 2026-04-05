@@ -16,6 +16,8 @@ DEFAULT_AUTOMATION_SETTINGS: Dict[str, Any] = {
     "default_audience": "General Professionals",
     "default_style": "Carousel slides",
     "default_tone": "professional",
+    "emoji_density": "Medium",
+    "auto_format_reach": True,
     "publish_target": "person",
     "organization_id": None,
     "max_posts_per_day": 1,
@@ -23,17 +25,55 @@ DEFAULT_AUTOMATION_SETTINGS: Dict[str, Any] = {
     "auto_post": False,
 }
 
+_EMOJI_PATTERN = re.compile(
+    "["
+    "\U0001F1E6-\U0001F1FF"
+    "\U0001F300-\U0001FAFF"
+    "\U00002600-\U000026FF"
+    "\U00002700-\U000027BF"
+    "]",
+    flags=re.UNICODE,
+)
+
+
+def normalize_emoji_density(value: Any) -> str:
+    """Normalize persisted emoji-density values to supported labels."""
+    normalized = str(value or "").strip().lower()
+    mapping = {
+        "none": "None",
+        "low": "Low",
+        "medium": "Medium",
+        "high": "High",
+    }
+    return mapping.get(normalized, DEFAULT_AUTOMATION_SETTINGS["emoji_density"])
+
+
+def count_visible_emojis(value: str | None) -> int:
+    """Count visible emoji characters in generated copy."""
+    return len(_EMOJI_PATTERN.findall(str(value or "")))
+
 
 async def load_user_automation_settings(user_id: str) -> Dict[str, Any]:
     """Load and normalize automation-related user settings."""
     normalized = dict(DEFAULT_AUTOMATION_SETTINGS)
 
     try:
-        result = supabase_client.admin.table("settings").select(
-            "default_goal,default_audience,default_style,default_tone,"
-            "publish_target,organization_id,max_posts_per_day,"
-            "preferred_content_types,auto_post"
-        ).eq("user_id", user_id).limit(1).execute()
+        try:
+            result = supabase_client.admin.table("settings").select(
+                "default_goal,default_audience,default_style,default_tone,"
+                "emoji_density,auto_format_reach,"
+                "publish_target,organization_id,max_posts_per_day,"
+                "preferred_content_types,auto_post"
+            ).eq("user_id", user_id).limit(1).execute()
+        except Exception as query_error:
+            if "column" in str(query_error).lower() and "does not exist" in str(query_error).lower():
+                result = supabase_client.admin.table("settings").select(
+                    "default_goal,default_audience,default_style,default_tone,"
+                    "publish_target,organization_id,max_posts_per_day,"
+                    "preferred_content_types,auto_post"
+                ).eq("user_id", user_id).limit(1).execute()
+            else:
+                raise
 
         if not result.data:
             return normalized
@@ -51,6 +91,10 @@ async def load_user_automation_settings(user_id: str) -> Dict[str, Any]:
         normalized["default_tone"] = str(
             raw.get("default_tone") or normalized["default_tone"]
         ).strip().lower() or normalized["default_tone"]
+        normalized["emoji_density"] = normalize_emoji_density(raw.get("emoji_density"))
+        normalized["auto_format_reach"] = bool(
+            raw.get("auto_format_reach", normalized["auto_format_reach"])
+        )
 
         publish_target = str(
             raw.get("publish_target") or normalized["publish_target"]
@@ -113,6 +157,10 @@ def build_generation_instructions(
     style = str(
         settings.get("default_style") or DEFAULT_AUTOMATION_SETTINGS["default_style"]
     ).strip()
+    emoji_density = normalize_emoji_density(settings.get("emoji_density"))
+    auto_format_reach = bool(
+        settings.get("auto_format_reach", DEFAULT_AUTOMATION_SETTINGS["auto_format_reach"])
+    )
 
     parts: List[str] = [
         "Be concrete, specific, and actionable.",
@@ -122,6 +170,24 @@ def build_generation_instructions(
         f"Optimize the post for the user's goal of {goal}.",
         f"Keep the structure aligned with {style} unless a clearer version is needed.",
     ]
+
+    if auto_format_reach:
+        parts.append(
+            "Favor the strongest LinkedIn-native formatting for reach when it helps: "
+            "stronger hooks, cleaner line breaks, tighter list structure, and more scannable flow."
+        )
+
+    if emoji_density == "None":
+        parts.append("Use zero emojis anywhere in the hook, body, CTA, or hashtags.")
+    elif emoji_density == "Low":
+        parts.append("Use only 1-2 relevant emojis total, and keep them subtle.")
+    elif emoji_density == "Medium":
+        parts.append("Use 2-4 relevant emojis naturally to improve scannability.")
+    else:
+        parts.append(
+            "Emoji density is High. Use 4-6 relevant emojis naturally across the post. "
+            "Do not return an emoji-free caption."
+        )
 
     preferred_content_types = settings.get("preferred_content_types") or []
     if preferred_content_types:

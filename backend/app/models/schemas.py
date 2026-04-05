@@ -315,6 +315,8 @@ class UserSettings(BaseModel):
     default_goal: str = Field(default="Authority", max_length=80)
     default_audience: str = Field(default="General Professionals", max_length=120)
     default_style: str = Field(default="Carousel slides", max_length=120)
+    emoji_density: Literal["None", "Low", "Medium", "High"] = Field(default="Medium")
+    auto_format_reach: bool = Field(default=True)
     publish_target: str = Field(default="person", pattern="^(person|organization|both)$")
     organization_id: Optional[str] = Field(default=None, max_length=64)
     max_posts_per_day: int = Field(default=1, ge=1, le=10, description="Max posts per day")
@@ -343,6 +345,8 @@ class UserSettingsUpdate(BaseModel):
     default_goal: Optional[str] = Field(None, max_length=80)
     default_audience: Optional[str] = Field(None, max_length=120)
     default_style: Optional[str] = Field(None, max_length=120)
+    emoji_density: Optional[Literal["None", "Low", "Medium", "High"]] = None
+    auto_format_reach: Optional[bool] = None
     publish_target: Optional[str] = Field(None, pattern="^(person|organization|both)$")
     organization_id: Optional[str] = Field(None, max_length=64)
     max_posts_per_day: Optional[int] = Field(None, ge=1, le=10)

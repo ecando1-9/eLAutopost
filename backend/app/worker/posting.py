@@ -56,6 +56,14 @@ class PostingWorker:
             if not due_posts:
                 return stats
 
+            due_posts.sort(
+                key=lambda post: (
+                    str(post.get("scheduled_at") or ""),
+                    str(post.get("created_at") or ""),
+                    str(post.get("id") or ""),
+                )
+            )
+
             # Group posts by user_id to prevent multi-posting spam for the same user
             # if a backlog has built up (e.g. from server sleep).
             user_post_map: Dict[str, Dict[str, Any]] = {}

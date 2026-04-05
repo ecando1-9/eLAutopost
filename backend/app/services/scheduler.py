@@ -303,7 +303,9 @@ class SchedulerService:
 
             result = supabase_client.admin.table("posts").select(
                 "*"
-            ).eq("status", "scheduled").lte("scheduled_at", now).execute()
+            ).eq("status", "scheduled").lte("scheduled_at", now).order(
+                "scheduled_at"
+            ).execute()
 
             posts = result.data or []
             if posts:

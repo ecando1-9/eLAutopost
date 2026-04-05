@@ -46,6 +46,8 @@ interface SettingsResponse {
     default_goal?: string;
     default_audience?: string;
     default_style?: string;
+    emoji_density?: 'None' | 'Low' | 'Medium' | 'High';
+    auto_format_reach?: boolean;
     publish_target?: PublishTarget;
     organization_id?: string | null;
     max_posts_per_day?: number;
@@ -423,6 +425,8 @@ export default function SettingsPage() {
                     if (settings.default_goal) setDefaultGoal(settings.default_goal);
                     if (settings.default_audience) setDefaultAudience(settings.default_audience);
                     if (settings.default_style) setDefaultStyle(settings.default_style);
+                    if (settings.emoji_density) setEmojiDensity(settings.emoji_density);
+                    if (typeof settings.auto_format_reach === 'boolean') setAutoFormatReach(settings.auto_format_reach);
                     if (settings.publish_target) setTargetMode(settings.publish_target);
                     if (settings.organization_id) setOrganizationId(settings.organization_id);
                     if (typeof settings.max_posts_per_day === 'number') {
@@ -588,6 +592,8 @@ export default function SettingsPage() {
                         default_goal: defaultGoal,
                         default_audience: defaultAudience,
                         default_style: defaultStyle,
+                        emoji_density: emojiDensity,
+                        auto_format_reach: autoFormatReach,
                         publish_target: targetMode,
                         organization_id: organizationId.trim() || null,
                         max_posts_per_day: maxPostsPerDay,
