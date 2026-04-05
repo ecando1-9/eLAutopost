@@ -127,6 +127,46 @@ const TIMEZONES = [
 const PREFERENCES_KEY = 'elautopost.preferences.v1';
 const LINKEDIN_ORGANIZATION_SCOPES = ['w_organization_social', 'rw_organization_admin'];
 
+function isValidTimeSlot(value: string): boolean {
+    if (!/^\d{2}:\d{2}$/.test(value)) {
+        return false;
+    }
+
+    const [hour, minute] = value.split(':').map((part) => parseInt(part, 10));
+    return hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59;
+}
+
+function parseSavedSlotTimes(value?: string | null): string[] {
+    if (typeof value !== 'string') {
+        return [];
+    }
+
+    const seen = new Set<string>();
+    return value
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter((entry) => {
+            if (!isValidTimeSlot(entry) || seen.has(entry)) {
+                return false;
+            }
+            seen.add(entry);
+            return true;
+        })
+        .sort();
+}
+
+function buildSlotInputs(slotValues: string[], desiredCount: number): string[] {
+    const normalized = slotValues
+        .map((value) => value.trim())
+        .slice(0, Math.max(1, desiredCount));
+
+    while (normalized.length < Math.max(1, desiredCount)) {
+        normalized.push('');
+    }
+
+    return normalized;
+}
+
 async function readErrorMessage(response: Response): Promise<string> {
     const raw = await response.text();
     if (!raw) return 'Request failed';
@@ -209,7 +249,10 @@ export default function SettingsPage() {
     const [slotTimes, setSlotTimes] = useState<string[]>(['09:00']);
 
     // Keep timeOfDay as comma-separated string for API to process multiple slots
-    const timeOfDay = [...slotTimes].sort().join(',') || '09:00';
+    const filledSlotTimes = slotTimes
+        .map((value) => value.trim())
+        .filter((value) => isValidTimeSlot(value));
+    const timeOfDay = [...filledSlotTimes].sort().join(',');
 
     const setSlotTime = (index: number, value: string) => {
         setSlotTimes((prev) => {
@@ -222,21 +265,7 @@ export default function SettingsPage() {
     const adjustMaxPosts = (delta: number) => {
         setMaxPostsPerDay((prev) => {
             const next = Math.min(5, Math.max(1, prev + delta));
-            // Grow or shrink slotTimes to match
-            setSlotTimes((times) => {
-                if (next > times.length) {
-                    const extra: string[] = [];
-                    let currentLast = times[times.length - 1] || '09:00';
-                    for (let i = times.length; i < next; i++) {
-                        const [hh, mm] = currentLast.split(':').map(Number);
-                        const nextH = ((hh + 3) % 24).toString().padStart(2, '0');
-                        currentLast = `${nextH}:${mm.toString().padStart(2, '0')}`;
-                        extra.push(currentLast);
-                    }
-                    return [...times, ...extra];
-                }
-                return times.slice(0, next);
-            });
+            setSlotTimes((times) => buildSlotInputs(times, next));
             return next;
         });
     };
@@ -245,7 +274,10 @@ export default function SettingsPage() {
         () => [
             { label: 'LinkedIn connected', done: isLinkedInConnected },
             { label: 'Auto-post enabled', done: isActive },
-            { label: 'Schedule selected', done: daysOfWeek.length > 0 && !!timeOfDay },
+            {
+                label: 'Schedule selected',
+                done: daysOfWeek.length > 0 && filledSlotTimes.length === maxPostsPerDay,
+            },
             { label: 'Content defaults selected', done: preferredContentTypes.length > 0 },
             {
                 label: 'Posting target configured',
@@ -258,7 +290,8 @@ export default function SettingsPage() {
             isLinkedInConnected,
             isActive,
             daysOfWeek.length,
-            timeOfDay,
+            filledSlotTimes.length,
+            maxPostsPerDay,
             preferredContentTypes.length,
             targetMode,
             organizationId,
@@ -409,19 +442,11 @@ export default function SettingsPage() {
                                 : ['MON', 'WED', 'FRI']
                         );
                         setTimezone(schedule.timezone || 'Asia/Kolkata');
-                        
-                        const rawTimeStr = typeof schedule.time_of_day === 'string' ? schedule.time_of_day : '09:00';
-                        let builtSlots = rawTimeStr.split(',').map(s => s.trim()).filter(Boolean);
-                        if (builtSlots.length === 0) builtSlots = ['09:00'];
-                        
-                        // Extend or shrink to match maxPostsPerDay
-                        for (let i = builtSlots.length; i < fetchedMaxPosts; i++) {
-                            const [hh, mm] = (builtSlots[i - 1] || '09:00').split(':').map(Number);
-                            const nextH = ((hh + 3) % 24).toString().padStart(2, '0');
-                            builtSlots.push(`${nextH}:${mm.toString().padStart(2, '0')}`);
-                        }
-                        builtSlots = builtSlots.slice(0, fetchedMaxPosts);
-                        setSlotTimes(builtSlots);
+
+                        const savedSlots = parseSavedSlotTimes(schedule.time_of_day);
+                        setSlotTimes(
+                            buildSlotInputs(savedSlots.length > 0 ? savedSlots : ['09:00'], fetchedMaxPosts)
+                        );
                         const loadedCategories =
                             Array.isArray(schedule.categories) && schedule.categories.length > 0
                                 ? schedule.categories
@@ -519,6 +544,14 @@ export default function SettingsPage() {
         try {
             if (isActive && daysOfWeek.length === 0) {
                 throw new Error('Select at least one day before enabling auto-post.');
+            }
+
+            if (filledSlotTimes.length !== maxPostsPerDay) {
+                throw new Error(`Choose ${maxPostsPerDay} posting time${maxPostsPerDay > 1 ? 's' : ''} before saving.`);
+            }
+
+            if (new Set(filledSlotTimes).size !== filledSlotTimes.length) {
+                throw new Error('Each daily post needs a different time.');
             }
 
             if (preferredContentTypes.length === 0) {
@@ -626,7 +659,7 @@ export default function SettingsPage() {
             description="Set LinkedIn targets, schedule rules, and AI defaults in one place."
             hidePageHeader
         >
-            <div className="max-w-5xl mx-auto">
+            <div className="mx-auto max-w-6xl">
                 <div className="mb-6 rounded-2xl border border-slate-200 bg-white/90 shadow-sm p-6 sm:p-8">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                         <div>
@@ -634,7 +667,7 @@ export default function SettingsPage() {
                                 <ShieldCheck className="h-3.5 w-3.5" />
                                 System Setup
                             </p>
-                            <h1 className="mt-3 text-3xl font-extrabold tracking-tight text-slate-900">
+                            <h1 className="mt-3 text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">
                                 Automation Settings
                             </h1>
                             <p className="mt-2 text-slate-600">
@@ -664,8 +697,8 @@ export default function SettingsPage() {
                     </div>
                 )}
 
-                <div className="grid gap-6 lg:grid-cols-3 mb-6">
-                    <div className="lg:col-span-2 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="mb-6 grid gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(280px,0.7fr)]">
+                    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                         <div className="flex flex-col gap-4">
                             <div className="flex items-center justify-between gap-4">
                                 <div className="flex items-center gap-4">
@@ -680,7 +713,7 @@ export default function SettingsPage() {
                                     </div>
                                 </div>
 
-                                <div className="flex items-center gap-2">
+                                <div className="flex flex-wrap items-center gap-2">
                                     <button
                                         type="button"
                                         onClick={() => loadLinkedInTargets()}
@@ -804,7 +837,7 @@ export default function SettingsPage() {
                         </div>
                     </div>
 
-                    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <div className="h-fit rounded-2xl border border-slate-200 bg-white p-6 shadow-sm xl:sticky xl:top-24">
                         <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Checklist</h3>
                         <div className="mt-4 space-y-2">
                             {setupChecks.map((check) => (
@@ -821,7 +854,7 @@ export default function SettingsPage() {
                     </div>
                 </div>
 
-                <div className="grid gap-6 lg:grid-cols-2">
+                <div className="grid gap-6 xl:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)]">
                     <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                         <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                             <Zap className="h-5 w-5 text-amber-600" />
@@ -840,7 +873,7 @@ export default function SettingsPage() {
                         </div>
 
                         <label className="block text-sm font-semibold text-slate-800 mb-2">Days</label>
-                        <div className="grid grid-cols-7 gap-2 mb-4">
+                        <div className="grid grid-cols-2 gap-2 mb-4 sm:grid-cols-4 lg:grid-cols-7">
                             {DAYS.map((day) => (
                                 <button
                                     type="button"
@@ -904,9 +937,9 @@ export default function SettingsPage() {
                                 </div>
                             </div>
 
-                            <div className="flex flex-wrap gap-3">
+                            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                                 {slotTimes.map((slotTime, idx) => (
-                                    <div key={idx} className="flex flex-col gap-1.5 w-full sm:w-auto sm:min-w-[130px]">
+                                    <div key={idx} className="flex flex-col gap-1.5">
                                         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider pl-1">
                                             Post {idx + 1}
                                         </span>
@@ -921,6 +954,11 @@ export default function SettingsPage() {
                                     </div>
                                 ))}
                             </div>
+                            {filledSlotTimes.length !== maxPostsPerDay && (
+                                <p className="mt-3 text-xs text-amber-700">
+                                    Choose a time for each enabled daily post before saving.
+                                </p>
+                            )}
                         </div>
 
                         <label className="block text-sm font-semibold text-slate-800 mb-2">Topic categories</label>
@@ -960,7 +998,7 @@ export default function SettingsPage() {
 
                         <div className="mb-4 rounded-xl border border-slate-200 p-3">
                             <p className="text-sm font-semibold text-slate-900 mb-2">Add custom category</p>
-                            <div className="flex gap-2">
+                            <div className="flex flex-col gap-2 sm:flex-row">
                                 <input
                                     type="text"
                                     value={customCategory}
@@ -1108,7 +1146,7 @@ export default function SettingsPage() {
                                     Managed LinkedIn Pages is not available now. Use Profile posting until LinkedIn approves Company Page permissions.
                                 </div>
                             )}
-                            <div className="grid grid-cols-3 gap-2 mb-3">
+                            <div className="grid grid-cols-1 gap-2 mb-3 sm:grid-cols-3">
                                 {[
                                     { id: 'person', label: 'Profile' },
                                     { id: 'organization', label: 'Page' },
@@ -1196,15 +1234,20 @@ export default function SettingsPage() {
                     </section>
                 </div>
 
-                <div className="mt-6 flex justify-end">
-                    <button
-                        onClick={handleSave}
-                        disabled={saving}
-                        className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-6 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60 disabled:cursor-not-allowed"
-                    >
-                        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                        {saving ? 'Saving...' : 'Save Settings'}
-                    </button>
+                <div className="sticky bottom-4 mt-6">
+                    <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-lg backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+                        <p className="text-sm text-slate-600">
+                            Save after changing schedule, LinkedIn target, or AI defaults so new posts follow the latest rules.
+                        </p>
+                        <button
+                            onClick={handleSave}
+                            disabled={saving}
+                            className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-6 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                            {saving ? 'Saving...' : 'Save Settings'}
+                        </button>
+                    </div>
                 </div>
             </div>
         </AppShell>

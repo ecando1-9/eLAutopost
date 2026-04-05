@@ -256,6 +256,7 @@ class PostCreate(BaseModel):
 
 class PostUpdate(BaseModel):
     """Model for updating an existing post."""
+    topic: Optional[str] = Field(None, max_length=200)
     hook: Optional[str] = Field(None, max_length=100)
     caption: Optional[str] = Field(None, max_length=3000)
     image_url: Optional[str] = None
@@ -263,7 +264,7 @@ class PostUpdate(BaseModel):
     target: Optional[Literal["person", "organization"]] = None
     organization_id: Optional[str] = Field(None, max_length=64)
     
-    @validator("hook", "caption")
+    @validator("topic", "hook", "caption")
     def sanitize_fields(cls, v):
         """Sanitize text fields."""
         if v:

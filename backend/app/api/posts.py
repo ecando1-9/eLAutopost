@@ -34,7 +34,14 @@ from ..core.datetime_utils import utc_now, parse_datetime_utc
 from ..core.text_utils import strip_markdown_formatting
 from ..services.database import supabase_client, log_audit_event
 from ..services.linkedin import linkedin_service
+from ..services.automation_defaults import (
+    build_generation_instructions,
+    compose_linkedin_caption,
+    load_user_automation_settings,
+)
+from ..services.content_generation import content_service
 from ..core.security import get_client_ip
+from ..core.security import sanitize_input
 from ..middleware.rate_limit import limiter, POSTING_RATE_LIMIT
 from ..middleware.admin_auth import get_current_user_id
 
@@ -46,6 +53,11 @@ class SchedulePostRequest(BaseModel):
     scheduled_at: Optional[str] = None
     target: Optional[str] = "person"
     organization_id: Optional[str] = None
+
+
+class AIRewritePostRequest(BaseModel):
+    prompt: Optional[str] = None
+    topic: Optional[str] = None
 
 
 _POST_TARGET_COLUMNS_AVAILABLE: Optional[bool] = None
@@ -247,8 +259,27 @@ async def update_post(
         Updated post
     """
     try:
+        existing_result = supabase_client.admin.table("posts").select("*").eq(
+            "id", post_id
+        ).eq("user_id", user_id).single().execute()
+
+        if not existing_result.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Post not found"
+            )
+
+        existing_post = existing_result.data
+        if existing_post.get("status") in {"posted", "running"}:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Only posts that have not been published yet can be edited"
+            )
+
         # Build update data (only include non-None fields)
         update_data = {}
+        if post_update.topic is not None:
+            update_data["topic"] = post_update.topic
         if post_update.hook is not None:
             update_data["hook"] = post_update.hook
         if post_update.caption is not None:
@@ -268,6 +299,16 @@ async def update_post(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="No update data provided"
             )
+
+        if (
+            existing_post.get("status") == "failed"
+            and post_update.status is None
+            and any(field in update_data for field in {"topic", "hook", "caption"})
+        ):
+            update_data["status"] = "pending_review"
+
+        if any(field in update_data for field in {"topic", "hook", "caption", "image_url"}):
+            update_data["error_message"] = None
         
         # Update post
         result = supabase_client.admin.table("posts").update(update_data).eq(
@@ -561,6 +602,119 @@ async def schedule_post(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to schedule post"
+        )
+
+
+@router.post("/{post_id}/ai-rewrite", response_model=PostResponse)
+@limiter.limit("20/minute")
+async def ai_rewrite_post(
+    request: Request,
+    post_id: str,
+    body: AIRewritePostRequest,
+    user_id: str = Depends(get_current_user_id)
+):
+    """
+    Rework an existing unpublished post using the latest saved automation settings
+    plus an optional user prompt from the queue UI.
+    """
+    try:
+        post_result = supabase_client.admin.table("posts").select("*").eq(
+            "id", post_id
+        ).eq("user_id", user_id).single().execute()
+
+        if not post_result.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Post not found"
+            )
+
+        post = post_result.data
+        if post.get("status") in {"posted", "running"}:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Only posts that have not been published yet can be rewritten"
+            )
+
+        rewritten_topic = sanitize_input(
+            (body.topic or post.get("topic") or "").strip(),
+            max_length=200
+        )
+        if not rewritten_topic:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Topic is required to rewrite a post"
+            )
+
+        rewrite_prompt = sanitize_input(
+            (body.prompt or "").strip(),
+            max_length=500
+        )
+
+        user_settings = await load_user_automation_settings(user_id)
+        instructions_parts = [
+            build_generation_instructions(user_settings),
+            f"Rewrite an existing LinkedIn post about {rewritten_topic}.",
+            f"Current hook: {post.get('hook', '')}",
+            f"Current caption: {post.get('caption', '')}",
+            "Keep the content high-quality, specific, and ready to publish on LinkedIn.",
+        ]
+        if rewrite_prompt:
+            instructions_parts.append(f"User direction for this rewrite: {rewrite_prompt}")
+
+        generated = await content_service.generate_content(
+            topic=rewritten_topic,
+            goal=user_settings.get("default_goal", "Authority"),
+            audience=user_settings.get("default_audience", "General Professionals"),
+            style=user_settings.get("default_style", "Carousel slides"),
+            tone=user_settings.get("default_tone", "professional"),
+            instructions=" ".join(part for part in instructions_parts if part),
+        )
+
+        update_data = {
+            "topic": rewritten_topic,
+            "hook": strip_markdown_formatting(getattr(generated, "hook", "")).strip() or post.get("hook"),
+            "caption": compose_linkedin_caption(generated),
+            "image_prompt": (
+                strip_markdown_formatting(getattr(generated, "image_prompt", "")).strip()
+                or post.get("image_prompt")
+            ),
+            "content_type": generated.content_type.value,
+            "error_message": None,
+        }
+
+        if post.get("status") == "failed":
+            update_data["status"] = "pending_review"
+
+        update_result = supabase_client.admin.table("posts").update(update_data).eq(
+            "id", post_id
+        ).eq("user_id", user_id).execute()
+
+        if not update_result.data:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to rewrite post"
+            )
+
+        await log_audit_event(
+            user_id=user_id,
+            event_type="post_ai_rewritten",
+            details={
+                "post_id": post_id,
+                "prompt": rewrite_prompt,
+                "topic": rewritten_topic,
+            },
+            ip_address=get_client_ip(request)
+        )
+
+        return PostResponse(**_normalize_post_record(update_result.data[0]))
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to rewrite post {post_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to rewrite post"
         )
 
 

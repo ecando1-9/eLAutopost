@@ -47,6 +47,104 @@ function parseDateKeyToLocal(dateKey: string): Date {
     return new Date(year, month - 1, day);
 }
 
+const DAY_LABELS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'] as const;
+
+function getTimeZoneParts(date: Date, timeZone: string): Record<string, string> {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+    });
+
+    return formatter.formatToParts(date).reduce<Record<string, string>>((parts, part) => {
+        if (part.type !== 'literal') {
+            parts[part.type] = part.value;
+        }
+        return parts;
+    }, {});
+}
+
+function getDateKeyInTimeZone(date: Date, timeZone: string): string {
+    const parts = getTimeZoneParts(date, timeZone);
+    return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function getMinutesInTimeZone(date: Date, timeZone: string): number {
+    const parts = getTimeZoneParts(date, timeZone);
+    return (parseInt(parts.hour || '0', 10) * 60) + parseInt(parts.minute || '0', 10);
+}
+
+function parseScheduleTimes(rawValue: unknown): string[] {
+    if (typeof rawValue !== 'string') {
+        return [];
+    }
+
+    const seen = new Set<string>();
+    return rawValue
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter((entry) => {
+            if (!/^\d{2}:\d{2}$/.test(entry) || seen.has(entry)) {
+                return false;
+            }
+
+            const [hour, minute] = entry.split(':').map((value) => parseInt(value, 10));
+            const isValid = hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59;
+            if (!isValid) {
+                return false;
+            }
+
+            seen.add(entry);
+            return true;
+        })
+        .sort();
+}
+
+function isScheduledDay(dateKey: string, scheduleMeta: any): boolean {
+    if (!scheduleMeta) {
+        return false;
+    }
+
+    const scheduledDays = Array.isArray(scheduleMeta.days_of_week)
+        ? scheduleMeta.days_of_week.map((day: string) => String(day).trim().toUpperCase())
+        : [];
+
+    if (scheduledDays.length === 0) {
+        return false;
+    }
+
+    const date = parseDateKeyToLocal(dateKey);
+    date.setHours(12, 0, 0, 0);
+    return scheduledDays.includes(DAY_LABELS[date.getDay()]);
+}
+
+function isFutureSlot(dateKey: string, slotTime: string, timeZone: string): boolean {
+    const todayKey = getDateKeyInTimeZone(new Date(), timeZone);
+    if (dateKey < todayKey) {
+        return false;
+    }
+
+    if (dateKey > todayKey) {
+        return true;
+    }
+
+    const [hour, minute] = slotTime.split(':').map((value) => parseInt(value, 10));
+    const slotMinutes = (hour * 60) + minute;
+    const cutoffMinutes = getMinutesInTimeZone(new Date(Date.now() + (5 * 60 * 1000)), timeZone);
+    return slotMinutes > cutoffMinutes;
+}
+
+function formatSlotTime(slotTime: string): string {
+    const [hour, minute] = slotTime.split(':').map((value) => parseInt(value, 10));
+    const hour12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    return `${hour12}:${minute.toString().padStart(2, '0')} ${ampm}`;
+}
+
 export default function ContentCalendarPage() {
     const router = useRouter();
     const supabase = createClientComponentClient();
@@ -56,7 +154,7 @@ export default function ContentCalendarPage() {
     const [selectedDay, setSelectedDay] = useState<string>(toDateKey(new Date()));
     const [settingsMeta, setSettingsMeta] = useState<any>(null);
     const [scheduleMeta, setScheduleMeta] = useState<any>(null);
-    const autoGenerateAttemptedRef = useRef(false);
+    const autoGenerateAttemptedRef = useRef<Set<string>>(new Set());
     
     // Internal state for custom manual generation
     const [generatingSlot, setGeneratingSlot] = useState<string | null>(null);
@@ -104,6 +202,9 @@ export default function ContentCalendarPage() {
         void loadQueue();
     }, []);
 
+    const scheduleTimeZone = scheduleMeta?.timezone || 'Asia/Kolkata';
+    const todayKey = useMemo(() => getDateKeyInTimeZone(new Date(), scheduleTimeZone), [scheduleTimeZone]);
+
     const upcomingDays = useMemo(() => {
         return Array.from({ length: 14 }).map((_, index) => {
             const date = new Date();
@@ -125,38 +226,36 @@ export default function ContentCalendarPage() {
     const selectedDayPosts = useMemo(() => {
         return scheduledPosts.filter((post) => {
             if (!post.scheduled_at) return false;
-            return toDateKey(new Date(post.scheduled_at)) === selectedDay;
+            return getDateKeyInTimeZone(new Date(post.scheduled_at), scheduleTimeZone) === selectedDay;
         });
-    }, [scheduledPosts, selectedDay]);
+    }, [scheduleTimeZone, scheduledPosts, selectedDay]);
+
+    const configuredSlotsForSelectedDay = useMemo(() => {
+        if (!isScheduledDay(selectedDay, scheduleMeta)) {
+            return [];
+        }
+
+        return parseScheduleTimes(scheduleMeta?.time_of_day);
+    }, [scheduleMeta, selectedDay]);
 
     const timelineSlots = useMemo(() => {
-        if (!scheduleMeta || !settingsMeta) return [];
-        const postsPerDay = Math.min(5, Math.max(1, settingsMeta.max_posts_per_day || 1));
-        const rawTimeStr = typeof scheduleMeta.time_of_day === 'string' ? scheduleMeta.time_of_day : '09:00';
-        let builtSlots: string[] = rawTimeStr.split(',').map((s: string) => s.trim()).filter(Boolean);
-        if (builtSlots.length === 0) builtSlots = ['09:00'];
-        
-        // Extend or shrink to match maxPostsPerDay
-        for (let i = builtSlots.length; i < postsPerDay; i++) {
-            const [hh, mm] = (builtSlots[i - 1] || '09:00').split(':').map(Number);
-            const nextH = ((hh + 3) % 24).toString().padStart(2, '0');
-            builtSlots.push(`${nextH}:${mm.toString().padStart(2, '0')}`);
-        }
-        builtSlots = builtSlots.slice(0, postsPerDay);
-        
+        if (!scheduleMeta) return [];
+
+        const visibleSlots = configuredSlotsForSelectedDay.filter((slotTime) =>
+            isFutureSlot(selectedDay, slotTime, scheduleTimeZone)
+        );
         const usedPosts = new Set<string>();
-        
-        return builtSlots.map((slotTime: string, idx: number) => {
+
+        return visibleSlots.map((slotTime: string, idx: number) => {
             const [hh, mm] = slotTime.split(':').map(Number);
             const targetMin = hh * 60 + mm;
-            
+
             let closestPost: QueuePost | undefined;
             let closestDiff = Infinity;
 
             for (const post of selectedDayPosts) {
                 if (!post.scheduled_at || usedPosts.has(post.id)) continue;
-                const pt = new Date(post.scheduled_at);
-                const postMin = pt.getHours() * 60 + pt.getMinutes();
+                const postMin = getMinutesInTimeZone(new Date(post.scheduled_at), scheduleTimeZone);
                 const diff = Math.abs(postMin - targetMin);
                 if (diff < 90 && diff < closestDiff) { // Within 1.5 hours
                     closestDiff = diff;
@@ -174,18 +273,34 @@ export default function ContentCalendarPage() {
                 existingPost: closestPost
             };
         });
-    }, [scheduleMeta, settingsMeta, selectedDay, selectedDayPosts]);
+    }, [configuredSlotsForSelectedDay, scheduleMeta, scheduleTimeZone, selectedDay, selectedDayPosts]);
+
+    const missingTimelineSlots = useMemo(
+        () => timelineSlots.filter((slot) => !slot.existingPost),
+        [timelineSlots]
+    );
+
+    const selectedDayHasPastCutoff = useMemo(() => {
+        if (selectedDay !== todayKey) {
+            return false;
+        }
+
+        return configuredSlotsForSelectedDay.length > 0 && timelineSlots.length === 0;
+    }, [configuredSlotsForSelectedDay.length, selectedDay, timelineSlots.length, todayKey]);
 
     const draftCount = posts.filter((post) => post.status === 'draft').length;
 
     useEffect(() => {
         const tryAutoGenerate = async () => {
-            if (loading || autoGenerateAttemptedRef.current) return;
+            if (loading) return;
             if (!scheduleMeta?.is_active || !scheduleMeta?.auto_topic) return;
             if (!settingsMeta?.auto_post) return;
-            if (scheduledPosts.length > 0) return;
+            if (missingTimelineSlots.length === 0) return;
 
-            autoGenerateAttemptedRef.current = true;
+            const attemptKey = `${selectedDay}:${missingTimelineSlots.map((slot) => slot.slotTime).join(',')}`;
+            if (autoGenerateAttemptedRef.current.has(attemptKey)) return;
+
+            autoGenerateAttemptedRef.current.add(attemptKey);
 
             try {
                 const { data } = await supabase.auth.getSession();
@@ -199,14 +314,17 @@ export default function ContentCalendarPage() {
 
                 if (response.ok) {
                     await loadQueue({ keepLoading: false });
+                } else {
+                    autoGenerateAttemptedRef.current.delete(attemptKey);
                 }
             } catch (error) {
+                autoGenerateAttemptedRef.current.delete(attemptKey);
                 console.error('Failed to auto-generate calendar slots:', error);
             }
         };
 
         void tryAutoGenerate();
-    }, [loading, scheduleMeta, settingsMeta, scheduledPosts.length]);
+    }, [loading, missingTimelineSlots, scheduleMeta, selectedDay, settingsMeta, supabase]);
 
     return (
         <AppShell
@@ -252,7 +370,11 @@ export default function ContentCalendarPage() {
                             <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
                                 {upcomingDays.map((day) => {
                                     const key = toDateKey(day);
-                                    const count = scheduledPosts.filter((post) => post.scheduled_at && toDateKey(new Date(post.scheduled_at)) === key).length;
+                                    const count = scheduledPosts.filter(
+                                        (post) =>
+                                            post.scheduled_at &&
+                                            getDateKeyInTimeZone(new Date(post.scheduled_at), scheduleTimeZone) === key
+                                    ).length;
                                     const selected = key === selectedDay;
                                     return (
                                         <button
@@ -287,7 +409,7 @@ export default function ContentCalendarPage() {
                                 </button>
                             </div>
 
-                            {scheduleMeta?.is_active && timelineSlots.length > 0 && selectedDayPosts.length === 0 && (
+                            {scheduleMeta?.is_active && missingTimelineSlots.length > 0 && selectedDayPosts.length === 0 && (
                                 <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800 flex items-start gap-2">
                                     <Sparkles className="h-4 w-4 mt-0.5 flex-shrink-0" />
                                     Auto-post is enabled for these slots. If you just saved Settings, scheduled posts can take a short moment to appear while the generator prepares content.
@@ -322,7 +444,9 @@ export default function ContentCalendarPage() {
                                 {selectedDayPosts.length === 0 && timelineSlots.length === 0 ? (
                                     <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-amber-800 text-sm flex items-start gap-2">
                                         <AlertCircle className="h-4 w-4 mt-0.5" />
-                                        Your auto-generation schedule is not active for this specific day. Update your schedule in Settings.
+                                        {selectedDayHasPastCutoff
+                                            ? 'Today only had past schedule times left, so no new slot is shown. If you enable auto-post later in the day, only the remaining future slot will appear and generate.'
+                                            : 'Your auto-generation schedule is not active for this specific day. Update your schedule in Settings.'}
                                     </div>
                                 ) : (
                                     <>
@@ -338,6 +462,7 @@ export default function ContentCalendarPage() {
                                                                     ? new Date(post.scheduled_at).toLocaleTimeString(undefined, {
                                                                           hour: '2-digit',
                                                                           minute: '2-digit',
+                                                                          timeZone: scheduleTimeZone,
                                                                       })
                                                                     : 'Time not set'}
                                                             </div>
@@ -391,10 +516,9 @@ export default function ContentCalendarPage() {
                                         ))}
 
                                         {/* 2. Show Empty Slots only if under capacity */}
-                                        {Array.from({ length: Math.max(0, (timelineSlots.length || 0) - selectedDayPosts.length) }).map((_, i) => {
-                                            const slotIdx = selectedDayPosts.length + i;
-                                            const slotTime = timelineSlots[slotIdx]?.slotTime || '12:00';
-                                            const pKey = `${selectedDay}-empty-${slotIdx}`;
+                                        {missingTimelineSlots.map((slot, slotIdx) => {
+                                            const slotTime = slot.slotTime;
+                                            const pKey = `${selectedDay}-empty-${slotTime}`;
                                             return (
                                                 <div key={`empty-${slotIdx}`} className="relative rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-5 transition-colors focus-within:border-sky-400 focus-within:bg-sky-50/50">
                                                     <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
@@ -402,12 +526,7 @@ export default function ContentCalendarPage() {
                                                             <div className="flex items-center gap-2 mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">
                                                                 <div className="flex items-center gap-1 text-slate-500 bg-slate-200/50 px-2.5 py-1 rounded-md">
                                                                     <Clock3 className="h-3.5 w-3.5" />
-                                                                    {(() => {
-                                                                        const [hh, mm] = slotTime.split(':').map(Number);
-                                                                        const hour12 = hh === 0 ? 12 : hh > 12 ? hh - 12 : hh;
-                                                                        const ampm = hh >= 12 ? 'PM' : 'AM';
-                                                                        return `${hour12}:${mm.toString().padStart(2, '0')} ${ampm}`;
-                                                                    })()}
+                                                                    {formatSlotTime(slotTime)}
                                                                 </div>
                                                                 <span className="px-2.5 py-1 rounded-md bg-transparent text-slate-400 border border-slate-200">
                                                                     Available Slot

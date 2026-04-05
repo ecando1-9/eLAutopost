@@ -12,13 +12,14 @@ import {
     ExternalLink,
     AlertCircle,
     Search,
-    ArrowDownUp,
     Heart,
     MessageSquare,
     Filter,
     Trash2,
     Send,
     Eye,
+    Pencil,
+    Sparkles,
     X,
 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -46,6 +47,7 @@ interface Post {
 }
 
 const QUEUE_STATUSES = ['draft', 'pending_review', 'scheduled', 'running'] as const;
+const EDITABLE_STATUSES = ['draft', 'pending_review', 'scheduled', 'failed'] as const;
 
 type QueueFilter =
     | 'all'
@@ -73,6 +75,45 @@ function formatPostStatusLabel(status: Post['status']): string {
         .join(' ');
 }
 
+function toLocalDateTimeInput(value?: string): string {
+    const base = value ? new Date(value) : new Date();
+    if (Number.isNaN(base.getTime())) {
+        const fallback = new Date();
+        fallback.setDate(fallback.getDate() + 1);
+        fallback.setHours(9, 0, 0, 0);
+        const fallbackOffset = fallback.getTimezoneOffset() * 60000;
+        return new Date(fallback.getTime() - fallbackOffset).toISOString().slice(0, 16);
+    }
+
+    const tzOffsetMs = base.getTimezoneOffset() * 60000;
+    return new Date(base.getTime() - tzOffsetMs).toISOString().slice(0, 16);
+}
+
+function buildDefaultScheduleInput(): string {
+    const base = new Date();
+    base.setDate(base.getDate() + 1);
+    base.setHours(9, 0, 0, 0);
+    return toLocalDateTimeInput(base.toISOString());
+}
+
+function canReviewPost(post: Post): boolean {
+    return EDITABLE_STATUSES.includes(post.status as (typeof EDITABLE_STATUSES)[number]);
+}
+
+function canSchedulePost(post: Post): boolean {
+    return post.status !== 'posted' && post.status !== 'running';
+}
+
+function canPublishPost(post: Post): boolean {
+    return post.status !== 'posted' && post.status !== 'running';
+}
+
+function getScheduleButtonLabel(post: Post): string {
+    if (post.status === 'scheduled') return 'Change Time';
+    if (post.status === 'pending_review') return 'Approve & Schedule';
+    return 'Schedule';
+}
+
 export default function PostsPage() {
     const router = useRouter();
     const supabase = createClientComponentClient();
@@ -83,14 +124,15 @@ export default function PostsPage() {
     const [sortBy, setSortBy] = useState<'generated' | 'scheduled'>('generated');
     const [actionPostId, setActionPostId] = useState<string | null>(null);
     const [previewPost, setPreviewPost] = useState<Post | null>(null);
+    const [editModal, setEditModal] = useState<Post | null>(null);
     const [scheduleModal, setScheduleModal] = useState<Post | null>(null);
-    const [scheduleDate, setScheduleDate] = useState(() => {
-        const base = new Date();
-        base.setDate(base.getDate() + 1);
-        base.setHours(9, 0, 0, 0);
-        const tzOffsetMs = base.getTimezoneOffset() * 60000;
-        return new Date(base.getTime() - tzOffsetMs).toISOString().slice(0, 16);
-    });
+    const [scheduleDate, setScheduleDate] = useState(buildDefaultScheduleInput);
+    const [editTopic, setEditTopic] = useState('');
+    const [editHook, setEditHook] = useState('');
+    const [editCaption, setEditCaption] = useState('');
+    const [aiRewritePrompt, setAiRewritePrompt] = useState('');
+    const [savingEdit, setSavingEdit] = useState(false);
+    const [rewritingPostId, setRewritingPostId] = useState<string | null>(null);
 
     useEffect(() => {
         fetchPosts();
@@ -302,6 +344,106 @@ export default function PostsPage() {
         setScheduleModal(null);
     };
 
+    const openScheduleModal = (post: Post) => {
+        setScheduleDate(post.scheduled_at ? toLocalDateTimeInput(post.scheduled_at) : buildDefaultScheduleInput());
+        setScheduleModal(post);
+    };
+
+    const openEditModal = (post: Post) => {
+        setEditModal(post);
+        setEditTopic(post.topic || '');
+        setEditHook(post.hook || '');
+        setEditCaption(post.caption || '');
+        setAiRewritePrompt('');
+    };
+
+    const handleSaveManualChanges = async () => {
+        if (!editModal) return;
+
+        const trimmedTopic = editTopic.trim();
+        const trimmedHook = editHook.trim();
+        const trimmedCaption = editCaption.trim();
+
+        if (!trimmedTopic || !trimmedHook || !trimmedCaption) {
+            toast.error('Topic, hook, and caption are required.');
+            return;
+        }
+
+        setSavingEdit(true);
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
+            const response = await fetch(`/api/v1/posts/${editModal.id}`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    topic: trimmedTopic,
+                    hook: trimmedHook,
+                    caption: trimmedCaption,
+                }),
+            });
+
+            if (!response.ok) {
+                const text = await response.text().catch(() => '');
+                throw new Error(text || 'Failed to save post changes');
+            }
+
+            toast.success('Post content updated.');
+            setEditModal(null);
+            await fetchPosts();
+        } catch (error: any) {
+            toast.error(error.message || 'Failed to save post changes');
+        } finally {
+            setSavingEdit(false);
+        }
+    };
+
+    const handleAiRewrite = async () => {
+        if (!editModal) return;
+        if (!editTopic.trim()) {
+            toast.error('Add a topic before asking AI to rework this post.');
+            return;
+        }
+
+        setRewritingPostId(editModal.id);
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
+            const response = await fetch(`/api/v1/posts/${editModal.id}/ai-rewrite`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    topic: editTopic.trim(),
+                    prompt: aiRewritePrompt.trim(),
+                }),
+            });
+
+            if (!response.ok) {
+                const text = await response.text().catch(() => '');
+                throw new Error(text || 'Failed to rewrite post');
+            }
+
+            const updatedPost: Post = await response.json();
+            setEditModal(updatedPost);
+            setEditTopic(updatedPost.topic || '');
+            setEditHook(updatedPost.hook || '');
+            setEditCaption(updatedPost.caption || '');
+            setAiRewritePrompt('');
+            toast.success('AI reworked this post using your latest settings.');
+            await fetchPosts();
+        } catch (error: any) {
+            toast.error(error.message || 'Failed to rewrite post');
+        } finally {
+            setRewritingPostId(null);
+        }
+    };
+
     return (
         <AppShell
             title="Content Queue"
@@ -323,14 +465,14 @@ export default function PostsPage() {
                             <div className="flex items-center justify-between mb-4">
                                 <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
                                     <Calendar className="h-5 w-5 text-indigo-600" />
-                                    Schedule Post
+                                    {scheduleModal.status === 'scheduled' ? 'Change Post Time' : 'Schedule Post'}
                                 </h3>
                                 <button onClick={() => setScheduleModal(null)} className="p-1 rounded-lg hover:bg-gray-100 text-gray-500">
                                     <X className="h-5 w-5" />
                                 </button>
                             </div>
                             <p className="text-sm text-gray-600 mb-1 font-medium">Topic: <span className="text-gray-900">{scheduleModal.topic}</span></p>
-                            <p className="text-sm text-gray-500 mb-4">Choose when to publish this post:</p>
+                            <p className="text-sm text-gray-500 mb-4">Update the publish time for this specific post only.</p>
                             <label className="block text-sm font-semibold text-gray-700 mb-1">Date & Time</label>
                             <input
                                 type="datetime-local"
@@ -351,7 +493,162 @@ export default function PostsPage() {
                                     className="flex-1 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-60 flex items-center justify-center gap-2"
                                 >
                                     {actionPostId === scheduleModal.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Calendar className="h-4 w-4" />}
-                                    Confirm Schedule
+                                    Save Time
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {editModal && (
+                    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm p-4">
+                        <div className="mx-auto mt-6 w-full max-w-5xl rounded-3xl bg-white shadow-2xl">
+                            <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-5 sm:px-6 lg:flex-row lg:items-start lg:justify-between">
+                                <div>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-700">
+                                            <Pencil className="h-3.5 w-3.5" />
+                                            Review Post
+                                        </span>
+                                        {getStatusBadge(editModal.status)}
+                                    </div>
+                                    <h3 className="mt-3 text-xl font-bold text-slate-900">Manual edit or ask AI to rework it</h3>
+                                    <p className="mt-1 text-sm text-slate-600">
+                                        Update the content directly, or give AI a clear instruction for this one post only.
+                                    </p>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    {editModal.scheduled_at && (
+                                        <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+                                            <Calendar className="h-3.5 w-3.5" />
+                                            {format(new Date(editModal.scheduled_at), 'MMM d, yyyy HH:mm')}
+                                        </span>
+                                    )}
+                                    {canSchedulePost(editModal) && (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setEditModal(null);
+                                                openScheduleModal(editModal);
+                                            }}
+                                            className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                                        >
+                                            Change Time
+                                        </button>
+                                    )}
+                                    <button onClick={() => setEditModal(null)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100">
+                                        <X className="h-5 w-5" />
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="grid gap-6 px-5 py-5 sm:px-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(300px,0.75fr)]">
+                                <div className="space-y-4">
+                                    <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+                                        <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-slate-500">
+                                            Topic
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={editTopic}
+                                            onChange={(e) => setEditTopic(e.target.value)}
+                                            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500"
+                                            placeholder="What is this post about?"
+                                        />
+                                    </div>
+
+                                    <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+                                        <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-slate-500">
+                                            Hook
+                                        </label>
+                                        <textarea
+                                            rows={3}
+                                            value={editHook}
+                                            onChange={(e) => setEditHook(e.target.value)}
+                                            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500"
+                                            placeholder="Scroll-stopping opening line"
+                                        />
+                                    </div>
+
+                                    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                                        <div className="mb-2 flex items-center justify-between gap-2">
+                                            <label className="block text-xs font-bold uppercase tracking-wide text-slate-500">
+                                                Caption
+                                            </label>
+                                            <span className="text-xs text-slate-400">{editCaption.length}/3000</span>
+                                        </div>
+                                        <textarea
+                                            rows={12}
+                                            value={editCaption}
+                                            onChange={(e) => setEditCaption(e.target.value)}
+                                            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm leading-6 outline-none focus:ring-2 focus:ring-sky-500"
+                                            placeholder="Refine the post body here..."
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="space-y-4">
+                                    <div className="rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 via-white to-sky-50 p-4">
+                                        <div className="flex items-center gap-2 text-violet-700">
+                                            <Sparkles className="h-4 w-4" />
+                                            <p className="text-sm font-semibold">AI Rework This Post</p>
+                                        </div>
+                                        <p className="mt-2 text-sm text-slate-600">
+                                            Give one clear instruction and AI will rewrite this post using the latest saved goals, audience, style, and tone from Settings.
+                                        </p>
+                                        <textarea
+                                            rows={6}
+                                            value={aiRewritePrompt}
+                                            onChange={(e) => setAiRewritePrompt(e.target.value)}
+                                            className="mt-3 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm outline-none focus:ring-2 focus:ring-violet-500"
+                                            placeholder="e.g. Make this sharper for students, add a stronger hook, and keep it more practical."
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={handleAiRewrite}
+                                            disabled={rewritingPostId === editModal.id}
+                                            className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-60"
+                                        >
+                                            {rewritingPostId === editModal.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                                            AI Rework & Apply
+                                        </button>
+                                    </div>
+
+                                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                        <p className="text-sm font-semibold text-slate-900">Review flow</p>
+                                        <p className="mt-2 text-sm text-slate-600">
+                                            Auto-generated posts stay short-range so you can review today&apos;s remaining slot and tomorrow&apos;s content before it publishes.
+                                        </p>
+                                    </div>
+
+                                    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                                        <p className="text-sm font-semibold text-slate-900">Current target</p>
+                                        <p className="mt-2 text-sm text-slate-600">
+                                            {editModal.target === 'organization' ? 'LinkedIn Page' : 'LinkedIn Profile'}
+                                        </p>
+                                        {editModal.error_message && (
+                                            <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                                                {editModal.error_message}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex flex-col gap-3 border-t border-slate-200 px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
+                                <button
+                                    onClick={() => setEditModal(null)}
+                                    className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleSaveManualChanges}
+                                    disabled={savingEdit}
+                                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+                                >
+                                    {savingEdit ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                                    Save Manual Changes
                                 </button>
                             </div>
                         </div>
@@ -414,6 +711,10 @@ export default function PostsPage() {
                             ))}
                         </div>
                     </div>
+                </div>
+
+                <div className="mb-6 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
+                    Auto-generated posts are kept intentionally short-range so you can review them before they publish. The queue is meant to cover any remaining slot today plus tomorrow, not a long backlog of stale content.
                 </div>
 
                 {/* Posts List */}
@@ -515,7 +816,7 @@ export default function PostsPage() {
                                 )}
 
                                 {/* Actions */}
-                                <div className="flex gap-2 pt-4 border-t border-gray-200">
+                                <div className="flex flex-wrap gap-2 pt-4 border-t border-gray-200">
                                     <button
                                         onClick={() => setPreviewPost(post)}
                                         className="flex items-center gap-2 px-4 py-2 text-sm bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 transition-colors"
@@ -523,7 +824,16 @@ export default function PostsPage() {
                                         <Eye className="h-4 w-4" />
                                         Preview
                                     </button>
-                                    {['draft', 'failed', 'pending_review'].includes(post.status) && (
+                                    {canReviewPost(post) && (
+                                        <button
+                                            onClick={() => openEditModal(post)}
+                                            className="flex items-center gap-2 px-4 py-2 text-sm bg-violet-50 text-violet-700 rounded-lg hover:bg-violet-100 transition-colors"
+                                        >
+                                            <Pencil className="h-4 w-4" />
+                                            Review & Edit
+                                        </button>
+                                    )}
+                                    {canPublishPost(post) && (
                                         <button
                                             onClick={() => runPostAction(post.id, 'publish', post)}
                                             disabled={actionPostId === post.id}
@@ -533,27 +843,14 @@ export default function PostsPage() {
                                             Publish Now
                                         </button>
                                     )}
-                                    {['draft', 'failed', 'pending_review'].includes(post.status) && (
+                                    {canSchedulePost(post) && (
                                         <button
-                                            onClick={() => {
-                                                if (post.scheduled_at) {
-                                                    const d = new Date(post.scheduled_at);
-                                                    const tzOffset = d.getTimezoneOffset() * 60000;
-                                                    const localISOTime = new Date(d.getTime() - tzOffset).toISOString().slice(0, 16);
-                                                    setScheduleDate(localISOTime);
-                                                } else {
-                                                    const d = new Date(Date.now() + 3600000);
-                                                    const tzOffset = d.getTimezoneOffset() * 60000;
-                                                    const localISOTime = new Date(d.getTime() - tzOffset).toISOString().slice(0, 16);
-                                                    setScheduleDate(localISOTime);
-                                                }
-                                                setScheduleModal(post);
-                                            }}
+                                            onClick={() => openScheduleModal(post)}
                                             disabled={actionPostId === post.id}
                                             className="flex items-center gap-2 px-4 py-2 text-sm bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-60"
                                         >
                                             <Calendar className="h-4 w-4" />
-                                            {post.status === 'pending_review' ? 'Approve & Schedule' : 'Schedule'}
+                                            {getScheduleButtonLabel(post)}
                                         </button>
                                     )}
                                     {post.status === 'posted' && post.linkedin_url && (
@@ -583,7 +880,7 @@ export default function PostsPage() {
                                         onClick={() => runPostAction(post.id, 'delete', post)}
                                         disabled={actionPostId === post.id}
                                         className={`flex items-center gap-2 px-4 py-2 text-sm bg-red-50 text-red-700 rounded-lg hover:bg-red-100 transition-colors disabled:opacity-60 ${
-                                            post.status === 'posted' ? '' : 'ml-auto'
+                                            post.status === 'posted' ? '' : 'sm:ml-auto'
                                         }`}
                                     >
                                         <Trash2 className="h-4 w-4" />
