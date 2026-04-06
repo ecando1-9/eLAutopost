@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     APP_VERSION: str = "1.0.0"
     ENVIRONMENT: str = Field(default="development", env="ENVIRONMENT")
     DEBUG: bool = Field(default=False, env="DEBUG")
+    ENABLE_EMBEDDED_SCHEDULER: bool = Field(
+        default=True, env="ENABLE_EMBEDDED_SCHEDULER"
+    )
     
     # API Configuration
     API_V1_PREFIX: str = "/api/v1"

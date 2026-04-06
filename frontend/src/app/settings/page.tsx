@@ -308,6 +308,19 @@ export default function SettingsPage() {
     const visibleCategories = showAllCategories
         ? availableCategories
         : availableCategories.slice(0, 10);
+    const setupComplete = setupScore === setupChecks.length;
+    const postingTargetLabel =
+        targetMode === 'person'
+            ? 'Profile'
+            : targetMode === 'organization'
+                ? 'Page'
+                : 'Profile + Page';
+    const cadenceSummary = isActive
+        ? `${maxPostsPerDay} slot${maxPostsPerDay > 1 ? 's' : ''} on ${daysOfWeek.length} day${daysOfWeek.length === 1 ? '' : 's'}`
+        : 'Manual posting only';
+    const scheduleSummary = filledSlotTimes.length > 0
+        ? filledSlotTimes.join(' • ')
+        : 'Choose posting times';
 
     const normalizeCategory = (value: string) => value.trim().replace(/\s+/g, ' ');
 
@@ -665,590 +678,787 @@ export default function SettingsPage() {
             description="Set LinkedIn targets, schedule rules, and AI defaults in one place."
             hidePageHeader
         >
-            <div className="mx-auto max-w-6xl">
-                <div className="mb-6 rounded-2xl border border-slate-200 bg-white/90 shadow-sm p-6 sm:p-8">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div className="mx-auto max-w-7xl space-y-6">
+                <section className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.14),transparent_32%),radial-gradient(circle_at_top_right,rgba(99,102,241,0.12),transparent_38%),linear-gradient(180deg,#ffffff,#f8fafc)] p-6 shadow-sm sm:p-8">
+                    <div className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_320px] xl:items-start">
                         <div>
-                            <p className="inline-flex items-center gap-2 rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-sky-800">
+                            <p className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-800 backdrop-blur">
                                 <ShieldCheck className="h-3.5 w-3.5" />
                                 System Setup
                             </p>
-                            <h1 className="mt-3 text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">
+                            <h1 className="mt-4 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
                                 Automation Settings
                             </h1>
-                            <p className="mt-2 text-slate-600">
-                                Keep only what matters: account connection, posting schedule, and AI defaults.
+                            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base">
+                                Connect LinkedIn, define your publishing rhythm, and set the AI rules once so queue,
+                                calendar, and auto-post all follow the same plan.
                             </p>
+
+                            <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                                <div className="rounded-2xl border border-white/80 bg-white/85 p-4 shadow-sm backdrop-blur">
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Connection</p>
+                                    <p className="mt-2 text-sm font-bold text-slate-900">
+                                        {isLinkedInConnected ? 'LinkedIn ready' : 'Needs connection'}
+                                    </p>
+                                    <p className="mt-1 text-xs text-slate-500">
+                                        {isLinkedInConnected ? (linkedinProfile?.name || 'Profile connected') : 'Connect before auto posting'}
+                                    </p>
+                                </div>
+                                <div className="rounded-2xl border border-white/80 bg-white/85 p-4 shadow-sm backdrop-blur">
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Cadence</p>
+                                    <p className="mt-2 text-sm font-bold text-slate-900">{cadenceSummary}</p>
+                                    <p className="mt-1 text-xs text-slate-500">{scheduleSummary}</p>
+                                </div>
+                                <div className="rounded-2xl border border-white/80 bg-white/85 p-4 shadow-sm backdrop-blur">
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Audience</p>
+                                    <p className="mt-2 text-sm font-bold text-slate-900">{defaultAudience}</p>
+                                    <p className="mt-1 text-xs text-slate-500">{defaultGoal} goal with {defaultTone} tone</p>
+                                </div>
+                                <div className="rounded-2xl border border-white/80 bg-white/85 p-4 shadow-sm backdrop-blur">
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Target</p>
+                                    <p className="mt-2 text-sm font-bold text-slate-900">{postingTargetLabel}</p>
+                                    <p className="mt-1 text-xs text-slate-500">
+                                        {categories.length > 0 ? `${categories.length} topic ${categories.length === 1 ? 'category' : 'categories'}` : 'Pick content categories'}
+                                    </p>
+                                </div>
+                            </div>
                         </div>
-                        <div className="rounded-xl bg-slate-900 px-4 py-3 text-white">
-                            <p className="text-xs uppercase tracking-wide text-slate-300">Setup progress</p>
-                            <p className="text-xl font-bold">
-                                {setupScore}/{setupChecks.length}
-                            </p>
+
+                        <div className="rounded-[24px] bg-slate-950 p-5 text-white shadow-[0_18px_50px_-28px_rgba(15,23,42,0.9)]">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Setup Progress</p>
+                            <div className="mt-3 flex items-end justify-between gap-4">
+                                <div>
+                                    <p className="text-4xl font-black tracking-tight">{setupScore}/{setupChecks.length}</p>
+                                    <p className="mt-1 text-sm text-slate-300">
+                                        {setupComplete ? 'Everything needed for automation is in place.' : 'Finish the remaining steps to make auto-post reliable.'}
+                                    </p>
+                                </div>
+                                <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+                                    setupComplete ? 'bg-emerald-500/20 text-emerald-200' : 'bg-white/10 text-slate-200'
+                                }`}>
+                                    {setupComplete ? 'Ready to run' : 'Needs attention'}
+                                </span>
+                            </div>
+                            <div className="mt-5 h-2 overflow-hidden rounded-full bg-white/10">
+                                <div
+                                    className="h-full rounded-full bg-gradient-to-r from-sky-400 via-cyan-300 to-emerald-300 transition-all"
+                                    style={{ width: `${(setupScore / setupChecks.length) * 100}%` }}
+                                />
+                            </div>
+                            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                                <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Schedule Window</p>
+                                    <p className="mt-1 text-sm font-semibold text-white">{scheduleSummary}</p>
+                                </div>
+                                <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Publishing Mode</p>
+                                    <p className="mt-1 text-sm font-semibold text-white">{postingTargetLabel}</p>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                </div>
+                </section>
 
                 {successMessage && (
-                    <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 flex items-center gap-2">
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 flex items-center gap-2">
                         <CheckCircle2 className="h-4 w-4" />
                         {successMessage}
                     </div>
                 )}
 
                 {errorMessage && (
-                    <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 flex items-center gap-2">
+                    <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 flex items-center gap-2">
                         <AlertCircle className="h-4 w-4" />
                         {errorMessage}
                     </div>
                 )}
 
-                <div className="mb-6 grid gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(280px,0.7fr)]">
-                    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                        <div className="flex flex-col gap-4">
-                            <div className="flex items-center justify-between gap-4">
-                                <div className="flex items-center gap-4">
-                                    <div className="h-11 w-11 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center">
-                                        <Linkedin className="h-5 w-5" />
-                                    </div>
-                                    <div>
-                                        <h2 className="text-lg font-bold text-slate-900">LinkedIn Connection</h2>
-                                        <p className="text-sm text-slate-600">
-                                            Required for manual publishing and auto posting.
-                                        </p>
-                                    </div>
+                <div className="grid gap-6 xl:grid-cols-[minmax(0,1.22fr)_minmax(280px,0.78fr)]">
+                    <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm sm:p-7">
+                        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="flex items-start gap-4">
+                                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-100 text-sky-700">
+                                    <Linkedin className="h-5 w-5" />
                                 </div>
+                                <div>
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-700">Connection</p>
+                                    <h2 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">LinkedIn Workspace</h2>
+                                    <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+                                        This connection controls both manual publishing and everything the scheduler can publish automatically.
+                                    </p>
+                                </div>
+                            </div>
 
-                                <div className="flex flex-wrap items-center gap-2">
-                                    <button
-                                        type="button"
-                                        onClick={() => loadLinkedInTargets()}
-                                        disabled={isLinkedInLoading}
-                                        className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50"
-                                    >
-                                        {isLinkedInLoading ? (
-                                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                        ) : (
-                                            <RefreshCw className="h-3.5 w-3.5" />
-                                        )}
-                                        Refresh
-                                    </button>
-
-                                    {isLinkedInConnected ? (
-                                        <>
-                                            <button
-                                                type="button"
-                                                onClick={handleConnectLinkedIn}
-                                                className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-800 hover:bg-sky-100 transition-colors"
-                                            >
-                                                Reconnect
-                                            </button>
-                                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
-                                                <CheckCircle2 className="h-3.5 w-3.5" />
-                                                Connected
-                                            </span>
-                                        </>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => loadLinkedInTargets()}
+                                    disabled={isLinkedInLoading}
+                                    className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-100 disabled:opacity-50"
+                                >
+                                    {isLinkedInLoading ? (
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
                                     ) : (
+                                        <RefreshCw className="h-3.5 w-3.5" />
+                                    )}
+                                    Refresh
+                                </button>
+
+                                {isLinkedInConnected ? (
+                                    <>
                                         <button
                                             type="button"
                                             onClick={handleConnectLinkedIn}
-                                            className="rounded-lg bg-sky-700 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-800 transition-colors"
+                                            className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-800 transition-colors hover:bg-sky-100"
                                         >
-                                            Connect
+                                            Reconnect
                                         </button>
-                                    )}
+                                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
+                                            <CheckCircle2 className="h-3.5 w-3.5" />
+                                            Connected
+                                        </span>
+                                    </>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={handleConnectLinkedIn}
+                                        className="rounded-xl bg-sky-700 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-sky-800"
+                                    >
+                                        Connect LinkedIn
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1.02fr)_minmax(260px,0.98fr)]">
+                            <div className={`rounded-3xl border p-4 ${
+                                isLinkedInConnected
+                                    ? 'border-emerald-200 bg-emerald-50/70'
+                                    : 'border-slate-200 bg-slate-50'
+                            }`}>
+                                <div className="flex items-start gap-3">
+                                    <div className={`mt-0.5 flex h-10 w-10 items-center justify-center rounded-2xl ${
+                                        isLinkedInConnected ? 'bg-emerald-100 text-emerald-700' : 'bg-white text-slate-500'
+                                    }`}>
+                                        <UserCircle2 className="h-5 w-5" />
+                                    </div>
+                                    <div>
+                                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Profile Status</p>
+                                        <p className="mt-1 text-lg font-bold text-slate-900">
+                                            {isLinkedInConnected ? (linkedinProfile?.name || 'LinkedIn connected') : 'Not connected yet'}
+                                        </p>
+                                        <p className="mt-2 text-sm text-slate-600">
+                                            {isLinkedInConnected
+                                                ? (linkedinProfile?.email || linkedinProfile?.urn || 'Manual publishing and auto-posting can use this profile.')
+                                                : 'Connect your LinkedIn profile first so the app can schedule and publish posts.'}
+                                        </p>
+                                    </div>
                                 </div>
                             </div>
 
-                            {isLinkedInConnected && linkedinProfile && (
-                                <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3">
-                                    <div className="flex items-start gap-2">
-                                        <UserCircle2 className="h-4 w-4 mt-0.5 text-emerald-700" />
-                                        <div>
-                                            <p className="text-sm font-semibold text-emerald-900">
-                                                Connected as {linkedinProfile.name}
-                                            </p>
-                                            <p className="text-xs text-emerald-700">
-                                                {linkedinProfile.email || linkedinProfile.urn || 'LinkedIn account connected'}
-                                            </p>
-                                        </div>
+                            <div className={`rounded-3xl border p-4 ${
+                                hasOrganizationPostingAccess
+                                    ? 'border-sky-200 bg-sky-50/80'
+                                    : 'border-amber-200 bg-amber-50/80'
+                            }`}>
+                                <div className="flex items-start gap-3">
+                                    <div className={`mt-0.5 flex h-10 w-10 items-center justify-center rounded-2xl ${
+                                        hasOrganizationPostingAccess ? 'bg-sky-100 text-sky-700' : 'bg-amber-100 text-amber-700'
+                                    }`}>
+                                        <Building2 className="h-5 w-5" />
                                     </div>
-                                </div>
-                            )}
-
-                            {isLinkedInConnected && !hasOrganizationPostingAccess && (
-                                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
-                                    <p className="text-xs font-semibold text-amber-900 mb-1">
-                                        Personal profile posting is ready.
-                                    </p>
-                                    <p className="text-xs text-amber-800">
-                                        Managed LinkedIn Pages is not available now for this app.
-                                        Company Page posting will work only after LinkedIn approves organization permissions and you reconnect.
-                                    </p>
-                                </div>
-                            )}
-
-                            {isLinkedInConnected && (
-                                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                                    <div className="flex items-center justify-between gap-2 mb-2">
-                                        <p className="text-sm font-semibold text-slate-900">Managed LinkedIn Pages</p>
-                                        <span className="text-xs text-slate-500">
-                                            {linkedinOrganizations.length} found
-                                        </span>
-                                    </div>
-
-                                    {linkedinOrganizations.length > 0 ? (
-                                        <div className="grid gap-2 sm:grid-cols-2">
-                                            {linkedinOrganizations.map((org) => (
-                                                <button
-                                                    key={org.id}
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setOrganizationId(org.id);
-                                                        if (targetMode === 'person') {
-                                                            setTargetMode('organization');
-                                                        }
-                                                    }}
-                                                    className={`text-left rounded-lg border px-3 py-2 transition-colors ${
-                                                        organizationId === org.id
-                                                            ? 'border-sky-500 bg-sky-50'
-                                                            : 'border-slate-200 bg-white hover:border-slate-300'
-                                                    }`}
-                                                >
-                                                    <div className="flex items-center gap-2">
-                                                        <Building2 className="h-4 w-4 text-slate-500" />
-                                                        <p className="text-sm font-semibold text-slate-900">{org.name}</p>
-                                                    </div>
-                                                    <p className="text-xs text-slate-500 mt-1">ID: {org.id}</p>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <div className="rounded-lg bg-sky-50 border border-sky-100 p-3">
-                                            <p className="text-xs text-sky-800 font-semibold mb-0.5">Managed LinkedIn Pages is not available now</p>
-                                            <p className="text-xs text-sky-700">
-                                                This app does not have LinkedIn approval for Company Page permissions yet.
-                                                For now, please use personal profile posting only.
-                                            </p>
-                                        </div>
-                                    )}
-
-                                    {linkedinScopes.length > 0 && (
-                                        <p className="text-[11px] text-slate-500 mt-3">
-                                            Scopes: {linkedinScopes.join(', ')}
+                                    <div>
+                                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Page Posting</p>
+                                        <p className="mt-1 text-lg font-bold text-slate-900">
+                                            {hasOrganizationPostingAccess ? 'Managed pages available' : 'Profile mode only'}
                                         </p>
-                                    )}
+                                        <p className="mt-2 text-sm text-slate-600">
+                                            {hasOrganizationPostingAccess
+                                                ? 'Your app has the organization scopes needed for Company Page publishing.'
+                                                : 'Managed LinkedIn Pages are not available now. Company Page posting will work only after LinkedIn approves organization permissions and you reconnect.'}
+                                        </p>
+                                    </div>
                                 </div>
-                            )}
+                            </div>
                         </div>
-                    </div>
 
-                    <div className="h-fit rounded-2xl border border-slate-200 bg-white p-6 shadow-sm xl:sticky xl:top-24">
-                        <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Checklist</h3>
-                        <div className="mt-4 space-y-2">
-                            {setupChecks.map((check) => (
-                                <div key={check.label} className="flex items-center gap-2 text-sm">
-                                    {check.done ? (
-                                        <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                                    ) : (
-                                        <div className="h-4 w-4 rounded-full border border-slate-300" />
-                                    )}
-                                    <span className={check.done ? 'text-slate-800' : 'text-slate-500'}>{check.label}</span>
+                        {isLinkedInConnected && (
+                            <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50/90 p-4">
+                                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                    <div>
+                                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Managed Pages</p>
+                                        <h3 className="mt-1 text-lg font-bold text-slate-900">
+                                            {linkedinOrganizations.length > 0 ? 'Choose a LinkedIn Page' : 'No approved pages available'}
+                                        </h3>
+                                    </div>
+                                    <span className="inline-flex h-fit rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
+                                        {linkedinOrganizations.length} found
+                                    </span>
                                 </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
 
-                <div className="grid gap-6 xl:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)]">
-                    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                        <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                            <Zap className="h-5 w-5 text-amber-600" />
-                            Auto Posting
-                        </h2>
-                        <p className="text-sm text-slate-600 mt-1 mb-4">
-                            Controls when and what the system posts automatically.
+                                {linkedinOrganizations.length > 0 ? (
+                                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                                        {linkedinOrganizations.map((org) => (
+                                            <button
+                                                key={org.id}
+                                                type="button"
+                                                onClick={() => {
+                                                    setOrganizationId(org.id);
+                                                    if (targetMode === 'person') {
+                                                        setTargetMode('organization');
+                                                    }
+                                                }}
+                                                className={`rounded-2xl border px-4 py-3 text-left transition-all ${
+                                                    organizationId === org.id
+                                                        ? 'border-sky-500 bg-white shadow-sm ring-2 ring-sky-100'
+                                                        : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm'
+                                                }`}
+                                            >
+                                                <div className="flex items-center gap-2">
+                                                    <Building2 className="h-4 w-4 text-slate-500" />
+                                                    <p className="text-sm font-semibold text-slate-900">{org.name}</p>
+                                                </div>
+                                                <p className="mt-1 text-xs text-slate-500">ID: {org.id}</p>
+                                            </button>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-4">
+                                        <p className="text-sm font-semibold text-slate-900">Managed LinkedIn Pages are not available now</p>
+                                        <p className="mt-1 text-sm text-slate-600">
+                                            Keep the app in Profile posting mode for now. When LinkedIn approves organization permissions,
+                                            reconnect and your pages will appear here.
+                                        </p>
+                                    </div>
+                                )}
+
+                                {linkedinScopes.length > 0 && (
+                                    <p className="mt-4 text-xs text-slate-500">
+                                        Scopes: {linkedinScopes.join(', ')}
+                                    </p>
+                                )}
+                            </div>
+                        )}
+                    </section>
+
+                    <aside className="h-fit rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm xl:sticky xl:top-24">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Checklist</p>
+                        <h3 className="mt-2 text-xl font-bold tracking-tight text-slate-900">Current setup status</h3>
+                        <p className="mt-2 text-sm leading-6 text-slate-600">
+                            This is the shortest path to a reliable automation setup: connect, choose the schedule, set defaults, then save once.
                         </p>
 
-                        <div className="flex items-center justify-between rounded-xl border border-slate-200 p-3 mb-4">
-                            <div>
-                                <p className="text-sm font-semibold text-slate-900">Enable auto-post</p>
-                                <p className="text-xs text-slate-500">Posts from queue on selected days and time</p>
-                            </div>
-                            <Toggle enabled={isActive} onChange={() => setIsActive((current) => !current)} />
-                        </div>
-
-                        <label className="block text-sm font-semibold text-slate-800 mb-2">Days</label>
-                        <div className="grid grid-cols-2 gap-2 mb-4 sm:grid-cols-4 lg:grid-cols-7">
-                            {DAYS.map((day) => (
-                                <button
-                                    type="button"
-                                    key={day.value}
-                                    onClick={() => toggleDay(day.value)}
-                                    className={`rounded-lg py-2 text-xs font-semibold transition-colors ${
-                                        daysOfWeek.includes(day.value)
-                                            ? 'bg-slate-900 text-white'
-                                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                        <div className="mt-5 space-y-3">
+                            {setupChecks.map((check, index) => (
+                                <div
+                                    key={check.label}
+                                    className={`flex items-start gap-3 rounded-2xl border px-4 py-3 ${
+                                        check.done ? 'border-emerald-200 bg-emerald-50/70' : 'border-slate-200 bg-slate-50/80'
                                     }`}
                                 >
-                                    {day.label}
-                                </button>
-                            ))}
-                        </div>
-
-                        {/* Timezone row */}
-                        <div className="mb-4">
-                            <label className="block text-sm font-semibold text-slate-800 mb-2">
-                                <Globe2 className="inline h-4 w-4 mr-1 text-slate-500" />
-                                Timezone
-                            </label>
-                            <select
-                                value={timezone}
-                                onChange={(event) => setTimezone(event.target.value)}
-                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-                            >
-                                {TIMEZONES.map((zone) => (
-                                    <option key={zone} value={zone}>
-                                        {zone}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-
-                        {/* Posts Per Day + Per-Slot Times */}
-                        <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-                                <div>
-                                    <h3 className="text-sm font-bold text-slate-800">Daily Schedule</h3>
-                                    <p className="text-xs text-slate-500 mt-0.5">Control how many times you post and when.</p>
-                                </div>
-                                <div className="flex items-center bg-slate-200 p-1 rounded-lg self-start sm:self-auto">
-                                    {[1, 2, 3, 4, 5].map((num) => (
-                                        <button
-                                            key={num}
-                                            type="button"
-                                            onClick={() => {
-                                                const delta = num - maxPostsPerDay;
-                                                if (delta !== 0) adjustMaxPosts(delta);
-                                            }}
-                                            className={`w-9 h-8 flex items-center justify-center rounded-md text-sm font-bold transition-all ${
-                                                maxPostsPerDay === num
-                                                    ? 'bg-white shadow-sm text-sky-700'
-                                                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-300'
-                                            }`}
-                                        >
-                                            {num}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                                {slotTimes.map((slotTime, idx) => (
-                                    <div key={idx} className="flex flex-col gap-1.5">
-                                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider pl-1">
-                                            Post {idx + 1}
-                                        </span>
-                                        <div className="flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm focus-within:ring-2 focus-within:ring-sky-500 focus-within:border-sky-500 transition-all">
-                                            <input
-                                                type="time"
-                                                value={slotTime}
-                                                onChange={(e) => setSlotTime(idx, e.target.value)}
-                                                className="w-full bg-transparent text-sm font-semibold text-slate-800 outline-none hover:cursor-pointer [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:text-sky-600 [&::-webkit-calendar-picker-indicator]:opacity-70 hover:[&::-webkit-calendar-picker-indicator]:opacity-100"
-                                            />
-                                        </div>
+                                    <div className={`mt-0.5 flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${
+                                        check.done ? 'bg-emerald-100 text-emerald-700' : 'bg-white text-slate-500 ring-1 ring-slate-200'
+                                    }`}>
+                                        {check.done ? <CheckCircle2 className="h-4 w-4" /> : index + 1}
                                     </div>
-                                ))}
-                            </div>
-                            {filledSlotTimes.length !== maxPostsPerDay && (
-                                <p className="mt-3 text-xs text-amber-700">
-                                    Choose a time for each enabled daily post before saving.
-                                </p>
-                            )}
-                        </div>
-
-                        <label className="block text-sm font-semibold text-slate-800 mb-2">Topic categories</label>
-                        <div className="flex flex-wrap gap-2 mb-3">
-                            {visibleCategories.map((category) => (
-                                <button
-                                    type="button"
-                                    key={category}
-                                    onClick={() => toggleCategory(category)}
-                                    className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
-                                        categories.includes(category)
-                                            ? 'bg-sky-700 text-white'
-                                            : 'bg-sky-50 text-sky-700 hover:bg-sky-100'
-                                    }`}
-                                >
-                                    {category}
-                                </button>
+                                    <div className="min-w-0">
+                                        <p className={`text-sm font-semibold ${check.done ? 'text-slate-900' : 'text-slate-700'}`}>{check.label}</p>
+                                        <p className={`mt-1 text-xs ${check.done ? 'text-emerald-700' : 'text-slate-500'}`}>
+                                            {check.done ? 'Configured and ready.' : 'Still needs attention before the system is fully ready.'}
+                                        </p>
+                                    </div>
+                                </div>
                             ))}
                         </div>
 
-                        <div className="flex items-center gap-3 mb-4">
-                            {availableCategories.length > 10 && (
-                                <button
-                                    type="button"
-                                    onClick={() => setShowAllCategories((current) => !current)}
-                                    className="text-xs font-semibold text-sky-700 hover:text-sky-800"
-                                >
-                                    {showAllCategories
-                                        ? 'Show fewer categories'
-                                        : `Show more (${availableCategories.length - 10})`}
-                                </button>
-                            )}
-                            <span className="text-xs text-slate-500">
-                                Selected: {categories.length}
+                        <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50/90 p-4">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Live Summary</p>
+                            <div className="mt-3 space-y-2 text-sm text-slate-700">
+                                <div className="flex items-center justify-between gap-3">
+                                    <span>Timezone</span>
+                                    <span className="font-semibold text-slate-900">{timezone}</span>
+                                </div>
+                                <div className="flex items-center justify-between gap-3">
+                                    <span>Daily times</span>
+                                    <span className="font-semibold text-slate-900">{scheduleSummary}</span>
+                                </div>
+                                <div className="flex items-center justify-between gap-3">
+                                    <span>Posting target</span>
+                                    <span className="font-semibold text-slate-900">{postingTargetLabel}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </aside>
+                </div>
+
+                <div className="grid gap-6 2xl:grid-cols-[minmax(0,1.02fr)_minmax(0,0.98fr)]">
+                    <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm sm:p-7">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                                <p className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-700">
+                                    <Zap className="h-3.5 w-3.5" />
+                                    Auto Posting
+                                </p>
+                                <h2 className="mt-3 text-2xl font-bold tracking-tight text-slate-900">Publishing rhythm</h2>
+                                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+                                    Choose when the app should publish and which topic pool it should draw from when auto-topic is enabled.
+                                </p>
+                            </div>
+                            <span className={`inline-flex h-fit rounded-full px-3 py-1 text-xs font-semibold ${
+                                isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700'
+                            }`}>
+                                {isActive ? 'Automation On' : 'Automation Off'}
                             </span>
                         </div>
 
-                        <div className="mb-4 rounded-xl border border-slate-200 p-3">
-                            <p className="text-sm font-semibold text-slate-900 mb-2">Add custom category</p>
-                            <div className="flex flex-col gap-2 sm:flex-row">
-                                <input
-                                    type="text"
-                                    value={customCategory}
-                                    onChange={(event) => setCustomCategory(event.target.value)}
-                                    onKeyDown={(event) => {
-                                        if (event.key === 'Enter') {
-                                            event.preventDefault();
-                                            addCustomCategory();
-                                        }
-                                    }}
-                                    placeholder="e.g. FinTech, GenAI, Creator Economy"
-                                    className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-                                />
-                                <button
-                                    type="button"
-                                    onClick={addCustomCategory}
-                                    className="inline-flex items-center gap-1 rounded-lg bg-sky-700 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-800"
-                                >
-                                    <Plus className="h-4 w-4" />
-                                    Add
-                                </button>
+                        <div className="mt-6 space-y-4">
+                            <div className="rounded-3xl border border-slate-200 bg-slate-50/90 p-4">
+                                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                                    <div>
+                                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Automation Switch</p>
+                                        <p className="mt-1 text-lg font-bold text-slate-900">Turn auto-posting on only when the schedule below is ready</p>
+                                        <p className="mt-1 text-sm text-slate-600">Posts will publish using the exact day and time slots you save here.</p>
+                                    </div>
+                                    <Toggle enabled={isActive} onChange={() => setIsActive((current) => !current)} />
+                                </div>
                             </div>
-                        </div>
 
-                        <div className="flex items-center justify-between rounded-xl border border-slate-200 p-3">
-                            <div>
-                                <p className="text-sm font-semibold text-slate-900">Auto topic mode</p>
-                                <p className="text-xs text-slate-500">Pick topics automatically from selected categories</p>
+                            <div className="rounded-3xl border border-slate-200 bg-white p-4">
+                                <div className="flex items-start gap-3">
+                                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
+                                        <Clock3 className="h-5 w-5" />
+                                    </div>
+                                    <div>
+                                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">When to publish</p>
+                                        <h3 className="mt-1 text-lg font-bold text-slate-900">Days, timezone, and daily slots</h3>
+                                    </div>
+                                </div>
+
+                                <div className="mt-4">
+                                    <label className="mb-2 block text-sm font-semibold text-slate-800">Active days</label>
+                                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+                                        {DAYS.map((day) => (
+                                            <button
+                                                type="button"
+                                                key={day.value}
+                                                onClick={() => toggleDay(day.value)}
+                                                className={`rounded-2xl px-3 py-2.5 text-sm font-semibold transition-all ${
+                                                    daysOfWeek.includes(day.value)
+                                                        ? 'bg-slate-900 text-white shadow-sm'
+                                                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                                                }`}
+                                            >
+                                                {day.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="mt-5">
+                                    <label className="mb-2 block text-sm font-semibold text-slate-800">
+                                        <Globe2 className="mr-1 inline h-4 w-4 text-slate-500" />
+                                        Timezone
+                                    </label>
+                                    <select
+                                        value={timezone}
+                                        onChange={(event) => setTimezone(event.target.value)}
+                                        className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                                    >
+                                        {TIMEZONES.map((zone) => (
+                                            <option key={zone} value={zone}>
+                                                {zone}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50/90 p-4">
+                                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                                        <div>
+                                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Daily schedule</p>
+                                            <h4 className="mt-1 text-base font-bold text-slate-900">How many posts per day, and exactly when</h4>
+                                        </div>
+                                        <div className="flex items-center rounded-2xl bg-slate-200 p-1">
+                                            {[1, 2, 3, 4, 5].map((num) => (
+                                                <button
+                                                    key={num}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const delta = num - maxPostsPerDay;
+                                                        if (delta !== 0) adjustMaxPosts(delta);
+                                                    }}
+                                                    className={`flex h-9 w-10 items-center justify-center rounded-xl text-sm font-bold transition-all ${
+                                                        maxPostsPerDay === num
+                                                            ? 'bg-white text-sky-700 shadow-sm'
+                                                            : 'text-slate-600 hover:bg-slate-300 hover:text-slate-900'
+                                                    }`}
+                                                >
+                                                    {num}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                                        {slotTimes.map((slotTime, idx) => (
+                                            <div key={idx} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                                                <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                                    Post {idx + 1}
+                                                </span>
+                                                <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 focus-within:border-sky-500 focus-within:ring-2 focus-within:ring-sky-100">
+                                                    <input
+                                                        type="time"
+                                                        value={slotTime}
+                                                        onChange={(e) => setSlotTime(idx, e.target.value)}
+                                                        className="w-full bg-transparent text-sm font-semibold text-slate-800 outline-none hover:cursor-pointer [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-70 hover:[&::-webkit-calendar-picker-indicator]:opacity-100"
+                                                    />
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    {filledSlotTimes.length !== maxPostsPerDay && (
+                                        <p className="mt-3 text-xs font-medium text-amber-700">
+                                            Choose a time for each enabled daily post before saving.
+                                        </p>
+                                    )}
+                                </div>
                             </div>
-                            <Toggle enabled={autoTopic} onChange={() => setAutoTopic((current) => !current)} />
+
+                            <div className="rounded-3xl border border-slate-200 bg-white p-4">
+                                <div className="flex items-start gap-3">
+                                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-100 text-sky-700">
+                                        <Sparkles className="h-5 w-5" />
+                                    </div>
+                                    <div>
+                                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">What to generate</p>
+                                        <h3 className="mt-1 text-lg font-bold text-slate-900">Topic categories and auto-topic rules</h3>
+                                    </div>
+                                </div>
+
+                                <div className="mt-4 flex flex-wrap gap-2">
+                                    {visibleCategories.map((category) => (
+                                        <button
+                                            type="button"
+                                            key={category}
+                                            onClick={() => toggleCategory(category)}
+                                            className={`rounded-full px-4 py-2 text-xs font-semibold transition-all ${
+                                                categories.includes(category)
+                                                    ? 'bg-sky-700 text-white shadow-sm'
+                                                    : 'bg-sky-50 text-sky-700 hover:bg-sky-100'
+                                            }`}
+                                        >
+                                            {category}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                <div className="mt-4 flex flex-wrap items-center gap-3">
+                                    {availableCategories.length > 10 && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowAllCategories((current) => !current)}
+                                            className="text-xs font-semibold text-sky-700 hover:text-sky-800"
+                                        >
+                                            {showAllCategories ? 'Show fewer categories' : `Show more (${availableCategories.length - 10})`}
+                                        </button>
+                                    )}
+                                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                                        {categories.length} selected
+                                    </span>
+                                </div>
+
+                                <div className="mt-4 rounded-3xl border border-slate-200 bg-slate-50/80 p-4">
+                                    <p className="text-sm font-semibold text-slate-900">Add custom category</p>
+                                    <p className="mt-1 text-sm text-slate-600">Add a topic lane that matches your niche or audience.</p>
+                                    <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                                        <input
+                                            type="text"
+                                            value={customCategory}
+                                            onChange={(event) => setCustomCategory(event.target.value)}
+                                            onKeyDown={(event) => {
+                                                if (event.key === 'Enter') {
+                                                    event.preventDefault();
+                                                    addCustomCategory();
+                                                }
+                                            }}
+                                            placeholder="e.g. FinTech, GenAI, Creator Economy"
+                                            className="flex-1 rounded-2xl border border-slate-300 px-4 py-3 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={addCustomCategory}
+                                            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-sky-700 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-sky-800"
+                                        >
+                                            <Plus className="h-4 w-4" />
+                                            Add category
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="mt-4 flex items-center justify-between rounded-3xl border border-slate-200 bg-slate-50/80 p-4">
+                                    <div>
+                                        <p className="text-sm font-semibold text-slate-900">Auto topic mode</p>
+                                        <p className="mt-1 text-sm text-slate-600">Rotate topics automatically from the categories you selected above.</p>
+                                    </div>
+                                    <Toggle enabled={autoTopic} onChange={() => setAutoTopic((current) => !current)} />
+                                </div>
+                            </div>
                         </div>
                     </section>
 
-                    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                        <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                            <Bot className="h-5 w-5 text-indigo-600" />
-                            AI Defaults
-                        </h2>
-                        <p className="text-sm text-slate-600 mt-1 mb-4">
-                            These defaults are used when generating new content.
-                        </p>
-
-                        <label className="block text-sm font-semibold text-slate-800 mb-2">Default tone</label>
-                        <select
-                            value={defaultTone}
-                            onChange={(event) => setDefaultTone(event.target.value)}
-                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        >
-                            {TONES.map((tone) => (
-                                <option key={tone} value={tone}>
-                                    {tone}
-                                </option>
-                            ))}
-                        </select>
-
-                        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+                    <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm sm:p-7">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                             <div>
-                                <label className="block text-xs font-semibold text-slate-600 mb-1 uppercase tracking-wide">
-                                    Default Goal
-                                </label>
-                                <select
-                                    value={defaultGoal}
-                                    onChange={(event) => setDefaultGoal(event.target.value)}
-                                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                >
-                                    {GOALS.map((goal) => (
-                                        <option key={goal} value={goal}>
-                                            {goal}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-semibold text-slate-600 mb-1 uppercase tracking-wide">
-                                    Default Audience
-                                </label>
-                                <select
-                                    value={defaultAudience}
-                                    onChange={(event) => setDefaultAudience(event.target.value)}
-                                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                >
-                                    {AUDIENCES.map((audience) => (
-                                        <option key={audience} value={audience}>
-                                            {audience}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-semibold text-slate-600 mb-1 uppercase tracking-wide">
-                                    Default Style
-                                </label>
-                                <select
-                                    value={defaultStyle}
-                                    onChange={(event) => setDefaultStyle(event.target.value)}
-                                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                >
-                                    {STYLES.map((style) => (
-                                        <option key={style} value={style}>
-                                            {style}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-semibold text-slate-600 mb-1 uppercase tracking-wide">
-                                    Emoji Density
-                                </label>
-                                <select
-                                    value={emojiDensity}
-                                    onChange={(event) => setEmojiDensity(event.target.value as 'None'|'Low'|'Medium'|'High')}
-                                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                >
-                                    {EMOJI_LEVELS.map((level) => (
-                                        <option key={level} value={level}>
-                                            {level} Emojis
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                        </div>
-
-                        <div className="flex items-center justify-between rounded-xl border border-slate-200 p-4 mb-5 bg-slate-50 relative overflow-hidden">
-                            <div className="absolute top-0 right-0 p-4 text-sky-500/10 pointer-events-none">
-                                <Sparkles className="h-16 w-16" />
-                            </div>
-                            <div className="relative z-10">
-                                <p className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                                    Maximize Formatting Reach
+                                <p className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-indigo-700">
+                                    <Bot className="h-3.5 w-3.5" />
+                                    AI Defaults
                                 </p>
-                                <p className="text-xs text-slate-500 mt-1 max-w-sm">
-                                    Automatically overwrite style choices with the most viral LinkedIn formatting 
-                                    (e.g. listicles, engaging hooks) tailored to your topic and the algorithm.
+                                <h2 className="mt-3 text-2xl font-bold tracking-tight text-slate-900">Generation profile</h2>
+                                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+                                    These defaults shape tone, audience, format, and destination whenever the app generates content automatically.
                                 </p>
                             </div>
-                            <div className="relative z-10 shrink-0">
-                                <Toggle enabled={autoFormatReach} onChange={() => setAutoFormatReach((current) => !current)} />
-                            </div>
+                            <span className="inline-flex h-fit rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
+                                {defaultTone} tone
+                            </span>
                         </div>
 
-                        <div className="rounded-xl border border-slate-200 p-3 mb-4">
-                            <p className="text-sm font-semibold text-slate-900 mb-2">Default LinkedIn Posting Target</p>
-                            {isLinkedInConnected && !hasOrganizationPostingAccess && (
-                                <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                                    Managed LinkedIn Pages is not available now. Use Profile posting until LinkedIn approves Company Page permissions.
+                        <div className="mt-6 space-y-4">
+                            <div className="rounded-3xl border border-slate-200 bg-white p-4">
+                                <div className="flex items-start gap-3">
+                                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-700">
+                                        <Bot className="h-5 w-5" />
+                                    </div>
+                                    <div>
+                                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Voice and positioning</p>
+                                        <h3 className="mt-1 text-lg font-bold text-slate-900">Tell the AI who it is writing for</h3>
+                                    </div>
                                 </div>
-                            )}
-                            <div className="grid grid-cols-1 gap-2 mb-3 sm:grid-cols-3">
-                                {[
-                                    { id: 'person', label: 'Profile' },
-                                    { id: 'organization', label: 'Page' },
-                                    { id: 'both', label: 'Both' },
-                                ].map((opt) => (
-                                    <button
-                                        key={opt.id}
-                                        type="button"
-                                        onClick={() => setTargetMode(opt.id as PublishTarget)}
-                                        className={`rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
-                                            targetMode === opt.id
-                                                ? 'bg-slate-900 text-white'
-                                                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                                        }`}
-                                    >
-                                        {opt.label}
-                                    </button>
-                                ))}
-                            </div>
-                            {(targetMode === 'organization' || targetMode === 'both') && (
-                                <div className="space-y-2">
-                                    {linkedinOrganizations.length > 0 && (
+
+                                <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+                                    <div className="xl:col-span-1">
+                                        <label className="mb-2 block text-sm font-semibold text-slate-800">Default tone</label>
                                         <select
-                                            value={organizationId}
-                                            onChange={(event) => setOrganizationId(event.target.value)}
-                                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                            value={defaultTone}
+                                            onChange={(event) => setDefaultTone(event.target.value)}
+                                            className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                                         >
-                                            <option value="">Select LinkedIn Page</option>
-                                            {linkedinOrganizations.map((org) => (
-                                                <option key={org.id} value={org.id}>
-                                                    {org.name} ({org.id})
+                                            {TONES.map((tone) => (
+                                                <option key={tone} value={tone}>
+                                                    {tone}
                                                 </option>
                                             ))}
                                         </select>
-                                    )}
-                                    <input
-                                        type="text"
-                                        value={organizationId}
-                                        onChange={(event) => setOrganizationId(event.target.value)}
-                                        placeholder="Organization/Page ID"
-                                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                    />
-                                </div>
-                            )}
-                        </div>
-
-                        <label className="block text-sm font-semibold text-slate-800 mb-2">Preferred content types</label>
-                        <div className="flex flex-wrap gap-2 mb-4">
-                            {CONTENT_TYPES.map((contentType) => (
-                                <button
-                                    type="button"
-                                    key={contentType}
-                                    onClick={() => toggleContentType(contentType)}
-                                    className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
-                                        preferredContentTypes.includes(contentType)
-                                            ? 'bg-indigo-700 text-white'
-                                            : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
-                                    }`}
-                                >
-                                    {contentType}
-                                </button>
-                            ))}
-                        </div>
-
-                        <div className="flex items-center justify-between rounded-xl border border-slate-200 p-3 mb-4">
-                            <div className="flex items-start gap-2">
-                                <Sparkles className="h-4 w-4 text-slate-500 mt-0.5" />
-                                <div>
-                                    <p className="text-sm font-semibold text-slate-900">Email notifications</p>
-                                    <p className="text-xs text-slate-500">Receive important automation and posting alerts</p>
+                                    </div>
+                                    <div>
+                                        <label className="mb-2 block text-sm font-semibold text-slate-800">Goal</label>
+                                        <select
+                                            value={defaultGoal}
+                                            onChange={(event) => setDefaultGoal(event.target.value)}
+                                            className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                        >
+                                            {GOALS.map((goal) => (
+                                                <option key={goal} value={goal}>
+                                                    {goal}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="mb-2 block text-sm font-semibold text-slate-800">Audience</label>
+                                        <select
+                                            value={defaultAudience}
+                                            onChange={(event) => setDefaultAudience(event.target.value)}
+                                            className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                        >
+                                            {AUDIENCES.map((audience) => (
+                                                <option key={audience} value={audience}>
+                                                    {audience}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="mb-2 block text-sm font-semibold text-slate-800">Style</label>
+                                        <select
+                                            value={defaultStyle}
+                                            onChange={(event) => setDefaultStyle(event.target.value)}
+                                            className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                        >
+                                            {STYLES.map((style) => (
+                                                <option key={style} value={style}>
+                                                    {style}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="mb-2 block text-sm font-semibold text-slate-800">Emoji density</label>
+                                        <select
+                                            value={emojiDensity}
+                                            onChange={(event) => setEmojiDensity(event.target.value as 'None'|'Low'|'Medium'|'High')}
+                                            className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                        >
+                                            {EMOJI_LEVELS.map((level) => (
+                                                <option key={level} value={level}>
+                                                    {level} Emojis
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
                                 </div>
                             </div>
-                            <Toggle
-                                enabled={notificationEmail}
-                                onChange={() => setNotificationEmail((current) => !current)}
-                            />
-                        </div>
 
-                        <div className="rounded-xl bg-slate-100 p-3 flex items-start gap-2">
-                            <CalendarDays className="h-4 w-4 text-slate-600 mt-0.5" />
-                            <p className="text-xs text-slate-600">
-                                Posts are scheduled at your exact selected times. After saving, new auto-generated scheduled posts may take a short moment to appear.
-                            </p>
+                            <div className="rounded-3xl border border-slate-200 bg-[linear-gradient(135deg,rgba(238,242,255,0.95),rgba(248,250,252,1))] p-4">
+                                <div className="flex items-center justify-between gap-4">
+                                    <div className="pr-8">
+                                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-indigo-700">Reach Optimizer</p>
+                                        <p className="mt-1 text-lg font-bold text-slate-900">Maximize formatting reach</p>
+                                        <p className="mt-2 text-sm leading-6 text-slate-600">
+                                            Let the system choose sharper hooks and more scannable formatting when that will give the post better LinkedIn performance.
+                                        </p>
+                                    </div>
+                                    <Toggle enabled={autoFormatReach} onChange={() => setAutoFormatReach((current) => !current)} />
+                                </div>
+                            </div>
+
+                            <div className="rounded-3xl border border-slate-200 bg-white p-4">
+                                <div className="flex items-start gap-3">
+                                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-100 text-slate-700">
+                                        <Linkedin className="h-5 w-5" />
+                                    </div>
+                                    <div>
+                                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Distribution</p>
+                                        <h3 className="mt-1 text-lg font-bold text-slate-900">Where generated posts should go</h3>
+                                    </div>
+                                </div>
+
+                                {!hasOrganizationPostingAccess && (
+                                    <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                                        Managed LinkedIn Pages are not available now. Use Profile posting until LinkedIn approves Company Page permissions.
+                                    </div>
+                                )}
+
+                                <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                                    {[
+                                        { id: 'person', label: 'Profile', disabled: false },
+                                        { id: 'organization', label: 'Page', disabled: !hasOrganizationPostingAccess },
+                                        { id: 'both', label: 'Both', disabled: !hasOrganizationPostingAccess },
+                                    ].map((opt) => (
+                                        <button
+                                            key={opt.id}
+                                            type="button"
+                                            disabled={opt.disabled}
+                                            onClick={() => {
+                                                if (!opt.disabled) {
+                                                    setTargetMode(opt.id as PublishTarget);
+                                                }
+                                            }}
+                                            className={`rounded-2xl px-4 py-3 text-sm font-semibold transition-all ${
+                                                opt.disabled
+                                                    ? 'cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400'
+                                                    : targetMode === opt.id
+                                                        ? 'bg-slate-900 text-white shadow-sm'
+                                                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                                            }`}
+                                        >
+                                            {opt.label}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                {(targetMode === 'organization' || targetMode === 'both') && (
+                                    <div className="mt-4 space-y-3">
+                                        {linkedinOrganizations.length > 0 && (
+                                            <select
+                                                value={organizationId}
+                                                onChange={(event) => setOrganizationId(event.target.value)}
+                                                className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                            >
+                                                <option value="">Select LinkedIn Page</option>
+                                                {linkedinOrganizations.map((org) => (
+                                                    <option key={org.id} value={org.id}>
+                                                        {org.name} ({org.id})
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        )}
+                                        <input
+                                            type="text"
+                                            value={organizationId}
+                                            onChange={(event) => setOrganizationId(event.target.value)}
+                                            placeholder="Organization/Page ID"
+                                            className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                        />
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="rounded-3xl border border-slate-200 bg-white p-4">
+                                <div className="flex items-start gap-3">
+                                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-700">
+                                        <Sparkles className="h-5 w-5" />
+                                    </div>
+                                    <div>
+                                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Content mix</p>
+                                        <h3 className="mt-1 text-lg font-bold text-slate-900">Preferred post angles and alerts</h3>
+                                    </div>
+                                </div>
+
+                                <div className="mt-4 flex flex-wrap gap-2">
+                                    {CONTENT_TYPES.map((contentType) => (
+                                        <button
+                                            type="button"
+                                            key={contentType}
+                                            onClick={() => toggleContentType(contentType)}
+                                            className={`rounded-full px-4 py-2 text-xs font-semibold transition-all ${
+                                                preferredContentTypes.includes(contentType)
+                                                    ? 'bg-indigo-700 text-white shadow-sm'
+                                                    : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
+                                            }`}
+                                        >
+                                            {contentType}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                <div className="mt-4 flex items-center justify-between rounded-3xl border border-slate-200 bg-slate-50/80 p-4">
+                                    <div className="pr-4">
+                                        <p className="text-sm font-semibold text-slate-900">Email notifications</p>
+                                        <p className="mt-1 text-sm text-slate-600">Receive important automation and posting alerts.</p>
+                                    </div>
+                                    <Toggle
+                                        enabled={notificationEmail}
+                                        onChange={() => setNotificationEmail((current) => !current)}
+                                    />
+                                </div>
+
+                                <div className="mt-4 rounded-3xl bg-slate-100 p-4">
+                                    <div className="flex items-start gap-3">
+                                        <CalendarDays className="mt-0.5 h-4 w-4 text-slate-600" />
+                                        <p className="text-sm leading-6 text-slate-600">
+                                            Posts are scheduled at your exact selected times. After saving, newly auto-generated scheduled posts may take a short moment to appear.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </section>
                 </div>
 
                 <div className="sticky bottom-4 mt-6">
-                    <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-lg backdrop-blur sm:flex-row sm:items-center sm:justify-between">
-                        <p className="text-sm text-slate-600">
-                            Save after changing schedule, LinkedIn target, or AI defaults so new posts follow the latest rules.
-                        </p>
+                    <div className="flex flex-col gap-4 rounded-[24px] border border-slate-200 bg-white/95 p-4 shadow-[0_20px_55px_-30px_rgba(15,23,42,0.5)] backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <p className="text-sm font-semibold text-slate-900">Save after any schedule or target change</p>
+                            <p className="mt-1 text-sm text-slate-600">
+                                New posts follow the latest LinkedIn target, timing, tone, and AI defaults only after you save.
+                            </p>
+                        </div>
                         <button
                             onClick={handleSave}
                             disabled={saving}
-                            className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-6 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                             {saving ? 'Saving...' : 'Save Settings'}

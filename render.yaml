@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: elautopost-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: ENABLE_EMBEDDED_SCHEDULER
+        value: "false"
+
+  - type: worker
+    name: elautopost-scheduler
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m app.worker.service
+    envVars:
+      - key: ENABLE_EMBEDDED_SCHEDULER
+        value: "false"

@@ -18,13 +18,12 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from contextlib import asynccontextmanager
 import time
-from datetime import timedelta
 
 from .core.config import settings, logger
 from .core.security import get_security_headers
-from .core.datetime_utils import utc_now
 from .middleware.rate_limit import setup_rate_limiting, limiter
 from .api import auth, content, posts, settings as settings_api, admin, user_content
+from .worker.service import start_scheduler
 
 
 # =============================================================================
@@ -41,50 +40,21 @@ async def lifespan(app: FastAPI):
     logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
     logger.info(f"Environment: {settings.ENVIRONMENT}")
     logger.info(f"Debug mode: {settings.DEBUG}")
-    
-    # Initialize background scheduler
-    from apscheduler.schedulers.asyncio import AsyncIOScheduler
-    from .worker.posting import posting_worker
-    from .worker.auto_generator import auto_generator_worker
-    
-    scheduler = AsyncIOScheduler()
-    
-    # Run immediately on startup and then every minute so posts land close to the saved slot.
-    scheduler.add_job(
-        posting_worker.process_due_posts,
-        'interval',
-        minutes=1,
-        id='posting_worker',
-        replace_existing=True,
-        coalesce=True,
-        max_instances=1,
-        misfire_grace_time=55,
-        next_run_time=utc_now(),
-    )
-    
-    # Keep upcoming content generated ahead of time without waiting a full hour.
-    scheduler.add_job(
-        auto_generator_worker.process_auto_generation,
-        'interval',
-        minutes=15,
-        id='auto_generator',
-        replace_existing=True,
-        coalesce=True,
-        max_instances=1,
-        misfire_grace_time=300,
-        next_run_time=utc_now() + timedelta(seconds=30),
-    )
-    
-    scheduler.start()
-    logger.info(
-        "Background scheduler started - posting worker runs every 1 min, "
-        "auto-generator every 15 mins"
-    )
+
+    scheduler = None
+    if settings.ENABLE_EMBEDDED_SCHEDULER:
+        scheduler = start_scheduler(service_name="api")
+    else:
+        logger.info(
+            "Embedded scheduler disabled for API process. "
+            "Use a dedicated worker service for background posting."
+        )
     
     yield
     
     # Shutdown
-    scheduler.shutdown()
+    if scheduler is not None:
+        scheduler.shutdown()
     logger.info("Shutting down application")
 
 
