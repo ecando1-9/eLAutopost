@@ -1,0 +1,48 @@
+name: Render Keepalive
+
+on:
+  schedule:
+    - cron: "2,12,22,32,42,52 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping-backend:
+    name: Ping backend health endpoint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      DEFAULT_KEEPALIVE_URL: https://elautopost-backend.onrender.com/health
+    steps:
+      - name: Resolve keepalive URL
+        id: target
+        run: |
+          KEEPALIVE_URL="${{ vars.RENDER_HEALTHCHECK_URL }}"
+          if [ -z "$KEEPALIVE_URL" ]; then
+            KEEPALIVE_URL="${{ secrets.RENDER_HEALTHCHECK_URL }}"
+          fi
+          if [ -z "$KEEPALIVE_URL" ]; then
+            KEEPALIVE_URL="$DEFAULT_KEEPALIVE_URL"
+          fi
+          echo "url=$KEEPALIVE_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Wake Render backend
+        run: |
+          echo "Pinging ${{ steps.target.outputs.url }}"
+          status_code="$(curl --silent --show-error --location \
+            --connect-timeout 20 \
+            --max-time 60 \
+            --retry 2 \
+            --retry-delay 5 \
+            --output /tmp/render-health.json \
+            --write-out "%{http_code}" \
+            "${{ steps.target.outputs.url }}")"
+
+          echo "HTTP status: $status_code"
+          cat /tmp/render-health.json
+
+          if [ "$status_code" -lt 200 ] || [ "$status_code" -ge 300 ]; then
+            echo "Keepalive ping failed."
+            exit 1
+          fi
