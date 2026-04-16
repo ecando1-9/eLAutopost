@@ -1,3 +1,5 @@
+<img width="1024" height="1024" alt="eLautopost_logo" src="https://github.com/user-attachments/assets/e8834cad-8df3-4a76-869e-5332a81ef7b0" />
+
 # 🚀 LinkedIn Content Automation SaaS
 
 **Enterprise-grade, multi-tenant SaaS platform for automated LinkedIn content creation and posting.**
@@ -44,7 +46,8 @@ This application enables users to:
 
 ```bash
 cd linkedin_automation
-```
+```<img width="1024" height="1024" alt="eLautopost_logo" src="https://github.com/user-attachments/assets/640231fd-c494-49db-ae3e-6ff85f269488" />
+
 
 ### 2. Backend Setup
 
