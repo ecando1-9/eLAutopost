@@ -1,6 +1,8 @@
 # Razorpay Setup
 
 1. Run the Supabase migration file `supabase/add_razorpay_billing.sql`.
+   This creates dedicated `billing_payments` and `billing_webhook_events` tables
+   so the app does not collide with any existing generic `payments` table.
 2. Add these backend environment variables:
 
 ```env

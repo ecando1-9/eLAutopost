@@ -21,7 +21,7 @@ WHERE status IN ('active', 'cancelled', 'expired')
 -- ---------------------------------------------------------------------------
 -- PAYMENTS TABLE
 -- ---------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS public.payments (
+CREATE TABLE IF NOT EXISTS public.billing_payments (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
     provider VARCHAR(30) NOT NULL DEFAULT 'razorpay',
@@ -45,30 +45,30 @@ CREATE TABLE IF NOT EXISTS public.payments (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.billing_payments ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "Users can view own payments" ON public.payments;
-CREATE POLICY "Users can view own payments"
-    ON public.payments FOR SELECT
+DROP POLICY IF EXISTS "Users can view own billing payments" ON public.billing_payments;
+CREATE POLICY "Users can view own billing payments"
+    ON public.billing_payments FOR SELECT
     USING (auth.uid() = user_id);
 
 CREATE INDEX IF NOT EXISTS idx_payments_user_id
-    ON public.payments (user_id);
+    ON public.billing_payments (user_id);
 
 CREATE INDEX IF NOT EXISTS idx_payments_status
-    ON public.payments (status);
+    ON public.billing_payments (status);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_razorpay_order_id_unique
-    ON public.payments (razorpay_order_id)
+    ON public.billing_payments (razorpay_order_id)
     WHERE razorpay_order_id IS NOT NULL;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_razorpay_payment_id_unique
-    ON public.payments (razorpay_payment_id)
+    ON public.billing_payments (razorpay_payment_id)
     WHERE razorpay_payment_id IS NOT NULL;
 
-DROP TRIGGER IF EXISTS update_payments_updated_at ON public.payments;
-CREATE TRIGGER update_payments_updated_at
-    BEFORE UPDATE ON public.payments
+DROP TRIGGER IF EXISTS update_billing_payments_updated_at ON public.billing_payments;
+CREATE TRIGGER update_billing_payments_updated_at
+    BEFORE UPDATE ON public.billing_payments
     FOR EACH ROW
     EXECUTE FUNCTION public.update_updated_at_column();
 

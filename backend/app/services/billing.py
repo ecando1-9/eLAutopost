@@ -235,7 +235,7 @@ class BillingService:
             },
         )
 
-        supabase_client.admin.table("payments").insert(
+        supabase_client.admin.table("billing_payments").insert(
             {
                 "user_id": user_id,
                 "provider": "razorpay",
@@ -274,7 +274,7 @@ class BillingService:
         payment_id: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         """Look up a payment row by known gateway identifiers."""
-        query = supabase_client.admin.table("payments").select("*")
+        query = supabase_client.admin.table("billing_payments").select("*")
         if payment_id:
             query = query.eq("razorpay_payment_id", payment_id)
         elif order_id:
@@ -352,7 +352,7 @@ class BillingService:
             or payment_row.get("paid_at"),
             "subscription_applied_at": now.isoformat(),
         }
-        supabase_client.admin.table("payments").update(payment_patch).eq(
+        supabase_client.admin.table("billing_payments").update(payment_patch).eq(
             "id", payment_row["id"]
         ).execute()
 
@@ -399,7 +399,7 @@ class BillingService:
             if not checkout_signature:
                 raise RuntimeError("Missing Razorpay checkout signature.")
             if not self.verify_checkout_signature(order_id, payment_id, checkout_signature):
-                supabase_client.admin.table("payments").update(
+                supabase_client.admin.table("billing_payments").update(
                     {
                         "status": "failed",
                         "error_message": "Razorpay signature verification failed",
@@ -428,7 +428,7 @@ class BillingService:
             )
 
         now = utc_now().isoformat()
-        updated_payment_result = supabase_client.admin.table("payments").update(
+        updated_payment_result = supabase_client.admin.table("billing_payments").update(
             {
                 "status": payment_details.get("status"),
                 "razorpay_payment_id": payment_details.get("id"),
@@ -475,7 +475,7 @@ class BillingService:
         if not payment_row:
             return
 
-        supabase_client.admin.table("payments").update(
+        supabase_client.admin.table("billing_payments").update(
             {
                 "status": "failed",
                 "error_message": reason or "Payment failed on Razorpay",
