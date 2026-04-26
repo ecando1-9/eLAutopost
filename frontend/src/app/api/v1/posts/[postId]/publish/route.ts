@@ -34,7 +34,6 @@ export async function POST(request: Request, { params }: RouteParams) {
         const organizationId = typeof body.organization_id === 'string' ? body.organization_id : '';
 
         const backendUrl = new URL(`${BACKEND_URL}/posts/${params.postId}/publish`);
-        backendUrl.searchParams.set('user_id', session.user.id);
         backendUrl.searchParams.set('target', target);
         if (organizationId) {
             backendUrl.searchParams.set('organization_id', organizationId);

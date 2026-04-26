@@ -3,39 +3,81 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Loader2, AlertCircle, Shield } from 'lucide-react';
+import { Loader2, AlertCircle, MailCheck, Shield } from 'lucide-react';
 import { adminService } from '@/services/admin';
+import {
+    getFriendlyAuthErrorMessage,
+    getResendConfirmationMessage,
+    normalizeEmail,
+    resendConfirmationEmail,
+    shouldOfferConfirmationResend,
+} from '@/lib/auth-email';
 
 export default function AdminLoginPage() {
     const router = useRouter();
-    const supabase = createClientComponentClient();
+    const [supabase] = useState(() => createClientComponentClient());
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [info, setInfo] = useState<string | null>(null);
+    const [pendingVerificationEmail, setPendingVerificationEmail] = useState<string | null>(null);
+    const [resendingConfirmation, setResendingConfirmation] = useState(false);
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
         setError(null);
+        setInfo(null);
+        setPendingVerificationEmail(null);
+
+        const loginEmail = normalizeEmail(email);
 
         try {
             const { error } = await supabase.auth.signInWithPassword({
-                email,
+                email: loginEmail,
                 password,
             });
 
             if (error) throw error;
 
-            // Verify admin role via backend (source of truth).
             await adminService.getCurrentAdmin();
             router.push('/admin/dashboard');
             router.refresh();
-        } catch (err: any) {
+        } catch (err: unknown) {
             await supabase.auth.signOut();
-            setError(err.message);
+            setError(getFriendlyAuthErrorMessage(err));
+            if (loginEmail && shouldOfferConfirmationResend(err)) {
+                setPendingVerificationEmail(loginEmail);
+                setInfo('Verify the admin email first, then sign in again.');
+            }
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleResendConfirmation = async () => {
+        if (!pendingVerificationEmail) {
+            return;
+        }
+
+        setResendingConfirmation(true);
+        setError(null);
+
+        try {
+            const { error: resendError } = await resendConfirmationEmail({
+                supabase,
+                email: pendingVerificationEmail,
+                origin: window.location.origin,
+            });
+
+            if (resendError) throw resendError;
+
+            setInfo(getResendConfirmationMessage(pendingVerificationEmail));
+        } catch (err: unknown) {
+            setError(getFriendlyAuthErrorMessage(err));
+        } finally {
+            setResendingConfirmation(false);
         }
     };
 
@@ -58,10 +100,40 @@ export default function AdminLoginPage() {
             <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
                 <div className="bg-white/10 backdrop-blur-lg py-8 px-4 shadow-2xl sm:rounded-lg sm:px-10 border border-white/20">
                     <form className="space-y-6" onSubmit={handleLogin}>
+                        {info && (
+                            <div className="flex items-start gap-2 rounded-lg border border-blue-400/40 bg-blue-500/15 p-3 text-sm text-blue-100">
+                                <MailCheck className="mt-0.5 h-4 w-4 shrink-0" />
+                                <p>{info}</p>
+                            </div>
+                        )}
+
                         {error && (
-                            <div className="flex items-center gap-2 p-3 text-sm text-red-200 bg-red-900/50 rounded-lg border border-red-500/50">
+                            <div className="flex items-center gap-2 rounded-lg border border-red-500/50 bg-red-900/50 p-3 text-sm text-red-200">
                                 <AlertCircle className="h-4 w-4 shrink-0" />
                                 <p>{error}</p>
+                            </div>
+                        )}
+
+                        {pendingVerificationEmail && (
+                            <div className="rounded-lg border border-white/20 bg-white/5 p-4">
+                                <p className="text-sm text-gray-200">
+                                    Need another verification email for <span className="font-semibold text-white">{pendingVerificationEmail}</span>?
+                                </p>
+                                <button
+                                    type="button"
+                                    onClick={handleResendConfirmation}
+                                    disabled={resendingConfirmation}
+                                    className="mt-3 inline-flex items-center rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    {resendingConfirmation ? (
+                                        <>
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                            Resending...
+                                        </>
+                                    ) : (
+                                        'Resend confirmation email'
+                                    )}
+                                </button>
                             </div>
                         )}
 
@@ -98,7 +170,7 @@ export default function AdminLoginPage() {
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
                                     className="block w-full appearance-none rounded-lg border border-white/30 bg-white/10 backdrop-blur px-3 py-2 text-white placeholder-gray-400 shadow-sm focus:border-blue-400 focus:outline-none focus:ring-blue-400 sm:text-sm"
-                                    placeholder="••••••••"
+                                    placeholder="********"
                                 />
                             </div>
                         </div>
@@ -141,7 +213,7 @@ export default function AdminLoginPage() {
                                 href="/login"
                                 className="text-sm font-medium text-blue-300 hover:text-blue-200 transition-colors"
                             >
-                                Go to user login →
+                                Go to user login
                             </a>
                         </div>
                     </div>

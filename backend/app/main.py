@@ -22,7 +22,15 @@ import time
 from .core.config import settings, logger
 from .core.security import get_security_headers
 from .middleware.rate_limit import setup_rate_limiting, limiter
-from .api import auth, content, posts, settings as settings_api, admin, user_content
+from .api import (
+    admin,
+    auth,
+    billing,
+    content,
+    posts,
+    settings as settings_api,
+    user_content,
+)
 from .worker.service import start_scheduler
 
 
@@ -239,6 +247,12 @@ app.include_router(
     settings_api.router,
     prefix=f"{settings.API_V1_PREFIX}/settings",
     tags=["Settings"]
+)
+
+app.include_router(
+    billing.router,
+    prefix=f"{settings.API_V1_PREFIX}/billing",
+    tags=["Billing"]
 )
 
 app.include_router(

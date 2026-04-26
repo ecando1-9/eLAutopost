@@ -1,6 +1,7 @@
 import './globals.css'
 import type { Metadata } from 'next'
 import { Manrope, Sora } from 'next/font/google'
+import { Analytics } from '@vercel/analytics/next'
 import CookieConsentBanner from '@/components/CookieConsentBanner';
 
 const manrope = Manrope({
@@ -31,6 +32,7 @@ export default function RootLayout({
                 <Toaster position="top-right" />
                 {children}
                 <CookieConsentBanner />
+                <Analytics />
             </body>
         </html>
     )

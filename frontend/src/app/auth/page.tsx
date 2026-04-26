@@ -3,11 +3,20 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Loader2, AlertCircle, User, Briefcase, Zap, ArrowLeft } from 'lucide-react';
+import { Loader2, AlertCircle, User, Briefcase, Zap, ArrowLeft, MailCheck } from 'lucide-react';
+import {
+    getBrowserAuthRedirectUrl,
+    getEmailConfirmationMessage,
+    getFriendlyAuthErrorMessage,
+    getResendConfirmationMessage,
+    normalizeEmail,
+    resendConfirmationEmail,
+    shouldOfferConfirmationResend,
+} from '@/lib/auth-email';
 
 export default function AuthPage() {
     const router = useRouter();
-    const supabase = createClientComponentClient();
+    const [supabase] = useState(() => createClientComponentClient());
     const [activeTab, setActiveTab] = useState<'user' | 'employee'>('user');
     const [isSignup, setIsSignup] = useState(false);
     const [email, setEmail] = useState('');
@@ -15,39 +24,52 @@ export default function AuthPage() {
     const [fullName, setFullName] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [info, setInfo] = useState<string | null>(null);
+    const [pendingVerificationEmail, setPendingVerificationEmail] = useState<string | null>(null);
+    const [resendingConfirmation, setResendingConfirmation] = useState(false);
 
     const handleAuth = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
         setError(null);
+        setInfo(null);
+        setPendingVerificationEmail(null);
+
+        const authEmail = normalizeEmail(email);
 
         try {
             if (isSignup) {
-                // Signup
-                const { error } = await supabase.auth.signUp({
-                    email,
+                const { error, data } = await supabase.auth.signUp({
+                    email: authEmail,
                     password,
                     options: {
+                        emailRedirectTo: getBrowserAuthRedirectUrl(window.location.origin),
                         data: {
-                            full_name: fullName
-                        }
-                    }
+                            full_name: fullName.trim(),
+                        },
+                    },
                 });
 
                 if (error) throw error;
 
-                alert('Check your email to confirm your account!');
+                if (data.session) {
+                    router.push('/dashboard');
+                    router.refresh();
+                    return;
+                }
+
+                setPendingVerificationEmail(authEmail);
+                setInfo(getEmailConfirmationMessage(authEmail));
+                setPassword('');
                 setIsSignup(false);
             } else {
-                // Login
                 const { error } = await supabase.auth.signInWithPassword({
-                    email,
+                    email: authEmail,
                     password,
                 });
 
                 if (error) throw error;
 
-                // Check role for employee login
                 if (activeTab === 'employee') {
                     const { data: { user } } = await supabase.auth.getUser();
 
@@ -66,22 +88,49 @@ export default function AuthPage() {
                         }
                     }
                 } else {
-                    // User login - go to user dashboard
                     router.push('/dashboard');
                 }
 
                 router.refresh();
             }
-        } catch (err: any) {
-            setError(err.message);
+        } catch (err: unknown) {
+            setError(getFriendlyAuthErrorMessage(err));
+            if (authEmail && shouldOfferConfirmationResend(err)) {
+                setPendingVerificationEmail(authEmail);
+                setInfo('Verify your email first, then come back here to sign in.');
+            }
         } finally {
             setLoading(false);
         }
     };
 
+    const handleResendConfirmation = async () => {
+        if (!pendingVerificationEmail) {
+            return;
+        }
+
+        setResendingConfirmation(true);
+        setError(null);
+
+        try {
+            const { error: resendError } = await resendConfirmationEmail({
+                supabase,
+                email: pendingVerificationEmail,
+                origin: window.location.origin,
+            });
+
+            if (resendError) throw resendError;
+
+            setInfo(getResendConfirmationMessage(pendingVerificationEmail));
+        } catch (err: unknown) {
+            setError(getFriendlyAuthErrorMessage(err));
+        } finally {
+            setResendingConfirmation(false);
+        }
+    };
+
     return (
         <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative">
-            {/* Back Button */}
             <button
                 onClick={() => router.push('/')}
                 className="absolute top-6 left-6 flex items-center text-gray-600 hover:text-gray-900 transition-colors p-2 rounded-lg hover:bg-white/50"
@@ -100,12 +149,11 @@ export default function AuthPage() {
                     {isSignup ? 'Create your account' : 'Sign in to AutoPost AI'}
                 </h2>
                 <p className="mt-2 text-center text-sm text-gray-600">
-                    {isSignup ? 'Start your 7-day free trial' : 'Welcome back!'}
+                    {isSignup ? 'Verify your email before your first password login' : 'Welcome back!'}
                 </p>
             </div>
 
             <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-                {/* Tabs */}
                 {!isSignup && (
                     <div className="flex gap-2 mb-6">
                         <button
@@ -133,10 +181,40 @@ export default function AuthPage() {
 
                 <div className="bg-white py-8 px-4 shadow-xl sm:rounded-lg sm:px-10 border border-gray-200">
                     <form className="space-y-6" onSubmit={handleAuth}>
+                        {info && (
+                            <div className="flex items-start gap-2 rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-700">
+                                <MailCheck className="mt-0.5 h-4 w-4 shrink-0" />
+                                <p>{info}</p>
+                            </div>
+                        )}
+
                         {error && (
                             <div className="flex items-center gap-2 p-3 text-sm text-red-600 bg-red-50 rounded-lg border border-red-100">
                                 <AlertCircle className="h-4 w-4 shrink-0" />
                                 <p>{error}</p>
+                            </div>
+                        )}
+
+                        {pendingVerificationEmail && (
+                            <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                                <p className="text-sm text-gray-700">
+                                    Need another confirmation email for <span className="font-semibold">{pendingVerificationEmail}</span>?
+                                </p>
+                                <button
+                                    type="button"
+                                    onClick={handleResendConfirmation}
+                                    disabled={resendingConfirmation}
+                                    className="mt-3 inline-flex items-center rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    {resendingConfirmation ? (
+                                        <>
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                            Resending...
+                                        </>
+                                    ) : (
+                                        'Resend confirmation email'
+                                    )}
+                                </button>
                             </div>
                         )}
 
@@ -150,6 +228,7 @@ export default function AuthPage() {
                                         id="fullName"
                                         name="fullName"
                                         type="text"
+                                        autoComplete="name"
                                         required
                                         value={fullName}
                                         onChange={(e) => setFullName(e.target.value)}
@@ -186,7 +265,7 @@ export default function AuthPage() {
                                     id="password"
                                     name="password"
                                     type="password"
-                                    autoComplete="current-password"
+                                    autoComplete={isSignup ? 'new-password' : 'current-password'}
                                     required
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}

@@ -14,7 +14,7 @@ Security:
 - User authentication required
 """
 
-from fastapi import APIRouter, HTTPException, status, Request, Depends
+from fastapi import APIRouter, HTTPException, status, Request, Depends, BackgroundTasks
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Optional
@@ -31,6 +31,7 @@ from ..services.pdf_carousel import carousel_service
 from ..services.database import log_audit_event, supabase_client
 from ..core.security import get_client_ip
 from ..middleware.rate_limit import limiter, GENERATION_RATE_LIMIT
+from ..middleware.admin_auth import get_current_user_id
 
 
 router = APIRouter()
@@ -43,6 +44,15 @@ class CarouselGenerationRequest(BaseModel):
     theme: str = "indigo"
 
 
+def _safe_remove_file(filepath: str) -> None:
+    """Best-effort cleanup for temporary carousel PDFs."""
+    try:
+        if os.path.exists(filepath):
+            os.remove(filepath)
+    except Exception as exc:
+        logger.warning(f"Failed to clean up temporary file {filepath}: {exc}")
+
+
 # =============================================================================
 # CONTENT GENERATION
 # =============================================================================
@@ -52,7 +62,7 @@ class CarouselGenerationRequest(BaseModel):
 async def generate_content(
     request: Request,
     generation_request: ContentGenerationRequest,
-    user_id: str
+    user_id: str = Depends(get_current_user_id)
 ):
     """
     Generate LinkedIn content for a given topic using the Growth Engine.
@@ -97,9 +107,10 @@ async def generate_content(
 @router.post("/generate/carousel")
 @limiter.limit(GENERATION_RATE_LIMIT)
 async def generate_carousel_pdf(
+    background_tasks: BackgroundTasks,
     request: Request,
     carousel_request: CarouselGenerationRequest,
-    user_id: str
+    user_id: str = Depends(get_current_user_id)
 ):
     """
     Generates a PDF Carousel from the provided hook, caption and slides.
@@ -116,11 +127,13 @@ async def generate_carousel_pdf(
         
         if not os.path.exists(filepath):
             raise HTTPException(status_code=500, detail="Failed to create PDF file")
-            
+
+        background_tasks.add_task(_safe_remove_file, filepath)
         return FileResponse(
-            path=filepath, 
-            media_type="application/pdf", 
-            filename=os.path.basename(filepath)
+            path=filepath,
+            media_type="application/pdf",
+            filename=os.path.basename(filepath),
+            background=background_tasks
         )
         
     except Exception as e:
@@ -140,7 +153,7 @@ async def generate_carousel_pdf(
 async def classify_topic(
     request: Request,
     topic: str,
-    user_id: str
+    user_id: str = Depends(get_current_user_id)
 ):
     """
     Classify a topic into a content type.
@@ -189,7 +202,7 @@ async def regenerate_hook(
     topic: str,
     content_type: ContentType,
     tone: str = "professional",
-    user_id: str = None
+    user_id: str = Depends(get_current_user_id)
 ):
     """
     Regenerate just the hook for a topic.
@@ -231,7 +244,7 @@ async def regenerate_caption(
     hook: str,
     content_type: ContentType,
     tone: str = "professional",
-    user_id: str = None
+    user_id: str = Depends(get_current_user_id)
 ):
     """
     Regenerate just the caption.
@@ -273,7 +286,7 @@ async def regenerate_image_prompt(
     topic: str,
     hook: str,
     content_type: ContentType,
-    user_id: str | None = None
+    user_id: str = Depends(get_current_user_id)
 ):
     """
     Regenerate just the image prompt.
@@ -313,7 +326,10 @@ async def regenerate_image_prompt(
 
 @router.get("/stats", response_model=dict)
 @limiter.limit("60/minute")
-async def get_generation_stats(request: Request, user_id: str):
+async def get_generation_stats(
+    request: Request,
+    user_id: str = Depends(get_current_user_id)
+):
     """
     Get content generation statistics for the user.
     

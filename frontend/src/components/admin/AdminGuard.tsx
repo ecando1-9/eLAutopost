@@ -9,27 +9,35 @@ import { Loader2 } from 'lucide-react';
 export default function AdminGuard({ children }: { children: React.ReactNode }) {
     const [isLoading, setIsLoading] = useState(true);
     const router = useRouter();
-    const supabase = createClientComponentClient();
+    const [supabase] = useState(() => createClientComponentClient());
 
     useEffect(() => {
+        let isActive = true;
+
         const checkAdmin = async () => {
             try {
                 const { data: { session } } = await supabase.auth.getSession();
                 if (!session) {
-                    router.push('/login');
+                    router.replace('/admin/login');
                     return;
                 }
 
                 // Verify admin role with backend
                 await adminService.getCurrentAdmin();
-                setIsLoading(false);
+                if (isActive) {
+                    setIsLoading(false);
+                }
             } catch (error) {
                 console.error('Admin check failed:', error);
-                router.push('/'); // Redirect to home if not admin
+                router.replace('/dashboard');
             }
         };
 
-        checkAdmin();
+        void checkAdmin();
+
+        return () => {
+            isActive = false;
+        };
     }, [router, supabase]);
 
     if (isLoading) {

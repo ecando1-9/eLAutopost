@@ -147,7 +147,7 @@ function formatSlotTime(slotTime: string): string {
 
 export default function ContentCalendarPage() {
     const router = useRouter();
-    const supabase = createClientComponentClient();
+    const [supabase] = useState(() => createClientComponentClient());
 
     const [loading, setLoading] = useState(true);
     const [posts, setPosts] = useState<QueuePost[]>([]);

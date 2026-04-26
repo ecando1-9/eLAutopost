@@ -16,8 +16,10 @@ Security:
 - Audit logging
 """
 
+from datetime import timedelta
 from fastapi import APIRouter, HTTPException, status, Request, Depends
 from fastapi.responses import RedirectResponse
+from jose import JWTError, jwt
 from typing import Optional
 import secrets
 from urllib.parse import urlencode
@@ -25,6 +27,7 @@ from urllib.parse import urlencode
 from ..models.schemas import (
     UserSignup,
     UserLogin,
+    SignupResponse,
     TokenResponse,
     UserProfile,
     OAuthCallback
@@ -51,6 +54,7 @@ from ..middleware.admin_auth import get_current_user_id
 
 
 router = APIRouter()
+_LINKEDIN_STATE_TTL_MINUTES = 10
 
 
 def _frontend_base_url() -> str:
@@ -76,11 +80,60 @@ def _frontend_redirect(path: str, **query_params: Optional[str]) -> str:
     return f"{_frontend_base_url()}{normalized_path}" + (f"?{query}" if query else "")
 
 
+def _create_oauth_state(user_id: str, provider: str) -> str:
+    """Create a signed, short-lived OAuth state token."""
+    now = utc_now()
+    payload = {
+        "sub": user_id,
+        "provider": provider,
+        "type": "oauth_state",
+        "iat": now,
+        "exp": now + timedelta(minutes=_LINKEDIN_STATE_TTL_MINUTES),
+        "jti": secrets.token_urlsafe(16),
+    }
+    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+
+def _decode_oauth_state(state: str, provider: str) -> str:
+    """Validate OAuth state token and return the bound user id."""
+    try:
+        payload = jwt.decode(state, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+    except JWTError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired OAuth state"
+        ) from exc
+
+    user_id = payload.get("sub")
+    if (
+        payload.get("type") != "oauth_state"
+        or payload.get("provider") != provider
+        or not isinstance(user_id, str)
+        or not user_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid OAuth state payload"
+        )
+
+    return user_id
+
+
+def _is_email_confirmation_error_message(message: str) -> bool:
+    """Identify Supabase email-confirmation login failures."""
+    lowered = message.lower()
+    return (
+        "email not confirmed" in lowered
+        or "confirm your email" in lowered
+        or "verify your email" in lowered
+    )
+
+
 # =============================================================================
 # EMAIL/PASSWORD AUTHENTICATION
 # =============================================================================
 
-@router.post("/signup", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/signup", response_model=SignupResponse, status_code=status.HTTP_201_CREATED)
 @limiter.limit(AUTH_RATE_LIMIT)
 async def signup(request: Request, user_data: UserSignup):
     """
@@ -88,7 +141,7 @@ async def signup(request: Request, user_data: UserSignup):
     
     Security:
     - Password strength validated by Pydantic model
-    - Password hashed with bcrypt
+    - Supabase confirmation email flow is used
     - Rate limited to prevent abuse
     - Audit logged
     
@@ -96,7 +149,7 @@ async def signup(request: Request, user_data: UserSignup):
         user_data: User signup data
         
     Returns:
-        JWT access token and user info
+        Signup status with email confirmation requirements
         
     Raises:
         HTTPException: If email already exists or signup fails
@@ -113,43 +166,58 @@ async def signup(request: Request, user_data: UserSignup):
                 detail="Email already registered"
             )
         
-        # Create user in Supabase Auth
-        auth_response = supabase_client.admin.auth.admin.create_user({
+        redirect_to = _frontend_redirect("/auth/v1/callback")
+
+        # Create the user through the standard signup flow so Supabase sends
+        # the confirmation email when Confirm email is enabled.
+        auth_response = supabase_client.client.auth.sign_up({
             "email": user_data.email,
             "password": user_data.password,
-            "email_confirm": True  # Auto-confirm for now
+            "options": {
+                "email_redirect_to": redirect_to,
+                "data": {
+                    "full_name": user_data.full_name,
+                },
+            },
         })
-        
+
+        if not auth_response.user:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Signup failed. Please try again."
+            )
+
         user_id = auth_response.user.id
-        
-        # Create user record in database
-        await create_user_record(
-            user_id=user_id,
-            email=user_data.email,
-            full_name=user_data.full_name,
-            auth_provider="email"
-        )
-        
-        # Create access token
-        access_token = create_access_token(
-            data={"sub": user_id, "email": user_data.email}
-        )
+        confirmation_required = auth_response.session is None
         
         # Log audit event
         await log_audit_event(
             user_id=user_id,
             event_type="user_signup",
-            details={"email": user_data.email, "provider": "email"},
+            details={
+                "email": user_data.email,
+                "provider": "email",
+                "email_confirmation_required": confirmation_required,
+            },
             ip_address=get_client_ip(request)
         )
-        
-        logger.info(f"New user signup: {user_data.email}")
-        
-        return TokenResponse(
-            access_token=access_token,
-            token_type="bearer",
-            expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-            user_id=user_id
+
+        if confirmation_required:
+            logger.info(f"New user signup pending confirmation: {user_data.email}")
+            return SignupResponse(
+                user_id=user_id,
+                email_confirmation_required=True,
+                message="Account created. Please check your email and confirm your address before signing in."
+            )
+
+        logger.warning(
+            "Signup for %s returned an immediate session. Confirm email may be disabled in Supabase.",
+            user_data.email,
+        )
+        return SignupResponse(
+            user_id=user_id,
+            email_confirmation_required=False,
+            message="Account created successfully."
         )
         
     except HTTPException:
@@ -235,6 +303,20 @@ async def login(request: Request, credentials: UserLogin):
     except HTTPException:
         raise
     except Exception as e:
+        error_message = str(e)
+        if _is_email_confirmation_error_message(error_message):
+            await log_audit_event(
+                user_id=None,
+                event_type="login_failed",
+                details={"email": credentials.email, "reason": "email_not_confirmed"},
+                ip_address=get_client_ip(request)
+            )
+
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Please confirm your email before signing in."
+            )
+
         logger.error(f"Login failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -285,27 +367,25 @@ async def google_callback(request: Request, code: str, state: str):
 
 @router.get("/linkedin")
 @limiter.limit("10/minute")
-async def linkedin_auth(request: Request, user_id: str):
+async def linkedin_auth(
+    request: Request,
+    user_id: str = Depends(get_current_user_id)
+):
     """
     Initiate LinkedIn OAuth flow.
     
     Args:
-        user_id: User ID to connect LinkedIn account to
+        user_id: Authenticated user ID to connect LinkedIn account to
         
     Returns:
-        Redirect to LinkedIn OAuth
+        Authorization URL for LinkedIn OAuth
     """
-    # Generate state for CSRF protection
-    state = secrets.token_urlsafe(32)
-    
-    # TODO: Store state in Redis with user_id
-    # For now, we'll include user_id in state (not production-ready)
-    state_with_user = f"{state}:{user_id}"
-    
+    state = _create_oauth_state(user_id, "linkedin")
+
     # Get LinkedIn authorization URL
-    auth_url = linkedin_service.get_authorization_url(state_with_user)
-    
-    return RedirectResponse(url=auth_url)
+    auth_url = linkedin_service.get_authorization_url(state)
+
+    return {"authorization_url": auth_url}
 
 
 @router.get("/linkedin/callback")
@@ -340,16 +420,7 @@ async def linkedin_callback(
                 detail="Missing authorization code or state"
             )
 
-        # Extract user_id from state (not production-ready)
-        # In production, retrieve from Redis
-        parts = state.split(":")
-        if len(parts) != 2:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid state parameter"
-            )
-        
-        user_id = parts[1]
+        user_id = _decode_oauth_state(state, "linkedin")
         
         # Exchange code for token
         token_data = await linkedin_service.exchange_code_for_token(code)

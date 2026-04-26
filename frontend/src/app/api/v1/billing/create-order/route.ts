@@ -1,4 +1,5 @@
 export const dynamic = 'force-dynamic';
+
 import { NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
@@ -23,29 +24,32 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const body = await request.json();
+        let body: Record<string, unknown> = {};
+        try {
+            body = await request.json();
+        } catch {
+            body = {};
+        }
 
-        const response = await fetch(`${BACKEND_URL}/content/generate`, {
+        const response = await fetch(`${BACKEND_URL}/billing/create-order`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${session.access_token}`,
+                Authorization: `Bearer ${session.access_token}`,
             },
             body: JSON.stringify(body),
         });
 
-        if (!response.ok) {
-            const error = await response.json();
-            return NextResponse.json(error, { status: response.status });
-        }
-
-        const data = await response.json();
-        return NextResponse.json(data);
-    } catch (error: any) {
-        console.error('Error generating strategy:', error);
-        return NextResponse.json(
-            { error: 'Internal server error while generating strategy.' },
-            { status: 500 }
-        );
+        const text = await response.text();
+        return new NextResponse(text, {
+            status: response.status,
+            headers: {
+                'Content-Type': response.headers.get('content-type') || 'application/json',
+                'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+            },
+        });
+    } catch (error) {
+        console.error('Error creating Razorpay order:', error);
+        return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 }

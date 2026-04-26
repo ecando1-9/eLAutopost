@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Script from 'next/script';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import {
     Calendar,
@@ -14,16 +15,33 @@ import {
     XCircle,
     AlertCircle,
     ShieldCheck,
-    PenSquare
+    PenSquare,
+    CreditCard,
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import AppShell from '@/components/AppShell';
+
+interface BillingPlan {
+    enabled: boolean;
+    provider: string;
+    plan_name: string;
+    display_name: string;
+    price: number;
+    amount_paise: number;
+    currency: string;
+}
 
 interface DashboardData {
     linkedin_connected: boolean;
+    billing: BillingPlan;
     subscription: {
         status: string;
+        plan_name?: string;
+        price?: number;
+        currency?: string;
         trial_end?: string;
         renewal_date?: string;
+        last_payment_date?: string;
     };
     usage: {
         posts_generated: number;
@@ -43,65 +61,99 @@ interface DashboardData {
     posted_today?: number;
 }
 
+interface RazorpaySuccessPayload {
+    razorpay_order_id: string;
+    razorpay_payment_id: string;
+    razorpay_signature: string;
+}
+
+interface RazorpayCheckoutPayload {
+    key_id: string;
+    order_id: string;
+    amount: number;
+    currency: string;
+    name: string;
+    description: string;
+    prefill: {
+        name?: string;
+        email?: string;
+    };
+    notes: Record<string, string>;
+    theme: {
+        color?: string;
+    };
+}
+
+interface RazorpayInstance {
+    open: () => void;
+    on: (event: string, callback: (response: unknown) => void) => void;
+}
+
+interface RazorpayConstructor {
+    new (options: Record<string, unknown>): RazorpayInstance;
+}
+
+declare global {
+    interface Window {
+        Razorpay?: RazorpayConstructor;
+    }
+}
+
 export default function UserDashboard() {
     const router = useRouter();
-    const supabase = createClientComponentClient();
+    const [supabase] = useState(() => createClientComponentClient());
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState<DashboardData | null>(null);
+    const [checkoutLoading, setCheckoutLoading] = useState(false);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
+    const mountedRef = useRef(true);
+    const inFlightRef = useRef(false);
 
-    useEffect(() => {
-        let mounted = true;
-
-        const initialize = async () => {
-            try {
-                const { data: { session } } = await supabase.auth.getSession();
-                if (!session) {
-                    router.push('/login');
-                    return;
-                }
-
-                if (!mounted) return;
-                await fetchDashboardData();
-            } catch (error) {
-                console.error('Failed to initialize dashboard:', error);
-                if (mounted) {
-                    setErrorMessage('Failed to load your dashboard. Please refresh.');
-                    setLoading(false);
-                }
+    const readResponseError = async (response: Response) => {
+        try {
+            const payload = await response.json();
+            if (typeof payload?.detail === 'string') {
+                return payload.detail;
             }
-        };
+            if (typeof payload?.error === 'string') {
+                return payload.error;
+            }
+        } catch {
+            // Fall back to raw text below.
+        }
 
-        initialize();
-
-        const onFocus = () => {
-            void fetchDashboardData(false);
-        };
-        window.addEventListener('focus', onFocus);
-        const intervalId = window.setInterval(() => {
-            void fetchDashboardData(false);
-        }, 60000);
-
-        return () => {
-            mounted = false;
-            window.removeEventListener('focus', onFocus);
-            window.clearInterval(intervalId);
-        };
-    }, []);
+        return (await response.text()) || 'Something went wrong';
+    };
 
     const fetchDashboardData = async (showLoader = true) => {
-        if (showLoader) {
+        if (inFlightRef.current) {
+            return;
+        }
+
+        inFlightRef.current = true;
+        if (showLoader && mountedRef.current) {
             setLoading(true);
         }
+
         try {
-            setErrorMessage(null);
+            if (mountedRef.current) {
+                setErrorMessage(null);
+            }
+
             const { data: { session } } = await supabase.auth.getSession();
-            const token = session?.access_token;
+            if (!session) {
+                router.replace('/login');
+                return;
+            }
 
             const response = await fetch('/api/v1/user/dashboard', {
-                headers: { 'Authorization': `Bearer ${token}` },
+                headers: { 'Authorization': `Bearer ${session.access_token}` },
                 cache: 'no-store',
             });
+
+            if (!mountedRef.current) {
+                return;
+            }
 
             if (response.ok) {
                 const result = await response.json();
@@ -113,13 +165,136 @@ export default function UserDashboard() {
             setErrorMessage(errorText || 'Failed to fetch dashboard data');
         } catch (error) {
             console.error('Failed to fetch dashboard data:', error);
-            setErrorMessage('Failed to fetch dashboard data');
+            if (mountedRef.current) {
+                setErrorMessage('Failed to fetch dashboard data');
+            }
         } finally {
-            if (showLoader) {
+            inFlightRef.current = false;
+            if (showLoader && mountedRef.current) {
                 setLoading(false);
             }
         }
     };
+
+    const handleStartCheckout = async () => {
+        if (!data?.billing?.enabled) {
+            toast.error('Razorpay is not configured on the server yet.');
+            return;
+        }
+
+        if (!window.Razorpay) {
+            toast.error('Razorpay Checkout is still loading. Please try again.');
+            return;
+        }
+
+        setCheckoutLoading(true);
+        try {
+            const response = await fetch('/api/v1/billing/create-order', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({}),
+            });
+
+            if (!response.ok) {
+                throw new Error(await readResponseError(response));
+            }
+
+            const checkoutData: RazorpayCheckoutPayload = await response.json();
+
+            const razorpay = new window.Razorpay({
+                key: checkoutData.key_id,
+                amount: checkoutData.amount,
+                currency: checkoutData.currency,
+                name: checkoutData.name,
+                description: checkoutData.description,
+                order_id: checkoutData.order_id,
+                prefill: checkoutData.prefill,
+                notes: checkoutData.notes,
+                theme: checkoutData.theme,
+                modal: {
+                    ondismiss: () => setCheckoutLoading(false),
+                },
+                handler: async (paymentResponse: RazorpaySuccessPayload) => {
+                    try {
+                        const verifyResponse = await fetch('/api/v1/billing/verify', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify(paymentResponse),
+                        });
+
+                        if (!verifyResponse.ok) {
+                            throw new Error(await readResponseError(verifyResponse));
+                        }
+
+                        toast.success('Payment successful. Your plan is active now.');
+                        await fetchDashboardData(false);
+                    } catch (error: any) {
+                        toast.error(error?.message || 'Payment succeeded, but verification failed.');
+                    } finally {
+                        setCheckoutLoading(false);
+                    }
+                },
+            });
+
+            razorpay.on('payment.failed', (event: any) => {
+                const failureMessage = event?.error?.description || 'Payment failed. Please try again.';
+                toast.error(failureMessage);
+                setCheckoutLoading(false);
+            });
+
+            razorpay.open();
+        } catch (error: any) {
+            toast.error(error?.message || 'Failed to start checkout');
+            setCheckoutLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        mountedRef.current = true;
+
+        const initialize = async () => {
+            try {
+                const { data: { session } } = await supabase.auth.getSession();
+                if (!session) {
+                    router.replace('/login');
+                    return;
+                }
+
+                if (!mountedRef.current) return;
+                await fetchDashboardData();
+            } catch (error) {
+                console.error('Failed to initialize dashboard:', error);
+                if (mountedRef.current) {
+                    setErrorMessage('Failed to load your dashboard. Please refresh.');
+                    setLoading(false);
+                }
+            }
+        };
+
+        initialize();
+
+        const onFocus = () => {
+            if (document.visibilityState === 'visible') {
+                void fetchDashboardData(false);
+            }
+        };
+        window.addEventListener('focus', onFocus);
+        const intervalId = window.setInterval(() => {
+            if (document.visibilityState === 'visible') {
+                void fetchDashboardData(false);
+            }
+        }, 60000);
+
+        return () => {
+            mountedRef.current = false;
+            window.removeEventListener('focus', onFocus);
+            window.clearInterval(intervalId);
+        };
+    }, [router, supabase]);
 
     if (loading) {
         return (
@@ -129,9 +304,41 @@ export default function UserDashboard() {
         );
     }
 
+    const formatBillingDate = (value?: string) => {
+        if (!value) {
+            return 'Not set';
+        }
+
+        return new Date(value).toLocaleDateString(undefined, {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+        });
+    };
+
     const isTrialActive = data?.subscription?.status === 'trial';
     const isSubscribed = data?.subscription?.status === 'active';
     const hasAccess = isTrialActive || isSubscribed;
+    const billingEnabled = !!data?.billing?.enabled;
+    const billingPrice = data?.billing
+        ? `${data.billing.currency} ${(data.billing.amount_paise / 100).toFixed(2)}`
+        : 'INR 299.00';
+    const planDisplayName = data?.billing?.display_name || 'Monthly Pro';
+    const checkoutButtonLabel = isSubscribed
+        ? 'Extend 30 Days'
+        : isTrialActive
+            ? 'Upgrade to Pro'
+            : 'Start Pro Plan';
+    const planWindowLabel = isTrialActive
+        ? 'Trial ends'
+        : isSubscribed
+            ? 'Renews on'
+            : 'Last access ended';
+    const planWindowValue = isTrialActive
+        ? formatBillingDate(data?.subscription?.trial_end)
+        : isSubscribed
+            ? formatBillingDate(data?.subscription?.renewal_date)
+            : formatBillingDate(data?.subscription?.renewal_date || data?.subscription?.trial_end);
 
     return (
         <AppShell
@@ -151,6 +358,8 @@ export default function UserDashboard() {
                 )
             }
         >
+            <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="afterInteractive" />
+
             <div className="space-y-8">
                 {/* Subscription Status Banner */}
                 {errorMessage && (
@@ -161,16 +370,22 @@ export default function UserDashboard() {
 
                 {!hasAccess && (
                     <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                        <div className="flex items-center">
+                        <div className="flex flex-col gap-4 md:flex-row md:items-center">
                             <AlertCircle className="h-5 w-5 text-yellow-600 mr-3" />
                             <div>
                                 <h3 className="text-sm font-medium text-yellow-800">Subscription Required</h3>
                                 <p className="text-sm text-yellow-700 mt-1">
-                                    Your trial has expired. Upgrade to continue using automation features.
+                                    Your trial or paid window has ended. Complete payment to continue using automation features.
                                 </p>
                             </div>
-                            <button className="ml-auto px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors">
-                                Upgrade Now
+                            <button
+                                type="button"
+                                onClick={handleStartCheckout}
+                                disabled={!billingEnabled || checkoutLoading}
+                                className="md:ml-auto inline-flex items-center justify-center gap-2 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                                {checkoutLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+                                {billingEnabled ? 'Pay with Razorpay' : 'Billing Not Ready'}
                             </button>
                         </div>
                     </div>
@@ -267,6 +482,58 @@ export default function UserDashboard() {
                                 <Clock className={`h-6 w-6 ${data?.schedule?.is_active ? 'text-green-600' : 'text-gray-400'
                                     }`} />
                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+                        <div className="max-w-2xl">
+                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">Billing</p>
+                            <h2 className="mt-2 text-2xl font-bold text-slate-900">{planDisplayName}</h2>
+                            <p className="mt-2 text-sm leading-6 text-slate-600">
+                                Keep automation active with secure Razorpay checkout. Every successful payment extends access by 30 days.
+                            </p>
+                            <div className="mt-4 flex flex-wrap gap-3">
+                                <span className="inline-flex items-center rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-800">
+                                    {billingPrice} / 30 days
+                                </span>
+                                <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                                    {planWindowLabel}: {planWindowValue}
+                                </span>
+                                <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                                    Status: {(data?.subscription?.status || 'trial').toUpperCase()}
+                                </span>
+                            </div>
+                            {data?.subscription?.last_payment_date && (
+                                <p className="mt-4 text-xs text-slate-500">
+                                    Last payment recorded on {formatBillingDate(data.subscription.last_payment_date)}.
+                                </p>
+                            )}
+                        </div>
+
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5 lg:w-[320px]">
+                            <div className="flex items-center gap-3">
+                                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-sky-100 text-sky-700">
+                                    <CreditCard className="h-5 w-5" />
+                                </div>
+                                <div>
+                                    <p className="text-sm font-semibold text-slate-900">Pay Securely with Razorpay</p>
+                                    <p className="text-xs text-slate-500">Cards, UPI, netbanking, and wallets</p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={handleStartCheckout}
+                                disabled={!billingEnabled || checkoutLoading}
+                                className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                                {checkoutLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+                                {billingEnabled ? checkoutButtonLabel : 'Waiting for Billing Setup'}
+                            </button>
+                            <p className="mt-3 text-xs leading-5 text-slate-500">
+                                Use this any time to upgrade from trial or extend your current subscription before it ends.
+                            </p>
                         </div>
                     </div>
                 </div>

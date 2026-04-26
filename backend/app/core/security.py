@@ -285,11 +285,21 @@ def get_security_headers() -> Dict[str, str]:
     Returns:
         Dictionary of security headers
     """
+    script_src = (
+        "script-src 'self' 'unsafe-inline'"
+        if settings.ENVIRONMENT == "production"
+        else "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+    )
+
     headers = {
         "X-Content-Type-Options": "nosniff",
         "X-Frame-Options": "DENY",
         "X-XSS-Protection": "1; mode=block",
         "Referrer-Policy": "strict-origin-when-cross-origin",
+        "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+        "Cross-Origin-Opener-Policy": "same-origin",
+        "Cross-Origin-Resource-Policy": "same-site",
+        "X-Permitted-Cross-Domain-Policies": "none",
     }
     
     # Add HSTS in production (enforces HTTPS)
@@ -300,7 +310,7 @@ def get_security_headers() -> Dict[str, str]:
     # Adjust based on your frontend needs
     headers["Content-Security-Policy"] = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+        f"{script_src}; "
         "style-src 'self' 'unsafe-inline'; "
         "img-src 'self' data: https:; "
         "font-src 'self' data:; "

@@ -4,30 +4,47 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Loader2, AlertCircle, Zap, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { Loader2, AlertCircle, MailCheck, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import {
+    getBrowserAuthRedirectUrl,
+    getEmailConfirmationMessage,
+    getFriendlyAuthErrorMessage,
+    getResendConfirmationMessage,
+    normalizeEmail,
+    resendConfirmationEmail,
+    shouldOfferConfirmationResend,
+} from '@/lib/auth-email';
 
 export default function SignupPage() {
     const router = useRouter();
-    const supabase = createClientComponentClient();
+    const [supabase] = useState(() => createClientComponentClient());
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [fullName, setFullName] = useState('');
     const [loading, setLoading] = useState(false);
     const [oauthLoading, setOauthLoading] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [info, setInfo] = useState<string | null>(null);
+    const [pendingVerificationEmail, setPendingVerificationEmail] = useState<string | null>(null);
+    const [resendingConfirmation, setResendingConfirmation] = useState(false);
 
     const handleSignup = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
         setError(null);
+        setInfo(null);
+        setPendingVerificationEmail(null);
+
+        const signupEmail = normalizeEmail(email);
 
         try {
             const { error: signUpError, data } = await supabase.auth.signUp({
-                email,
+                email: signupEmail,
                 password,
                 options: {
+                    emailRedirectTo: getBrowserAuthRedirectUrl(window.location.origin),
                     data: {
-                        full_name: fullName,
+                        full_name: fullName.trim(),
                     },
                 },
             });
@@ -38,46 +55,74 @@ export default function SignupPage() {
                 router.push('/dashboard');
                 router.refresh();
             } else {
-                setError('Please check your email to confirm your account.');
+                setPendingVerificationEmail(signupEmail);
+                setInfo(getEmailConfirmationMessage(signupEmail));
+                setPassword('');
             }
-
-        } catch (err: any) {
-            setError(err.message);
+        } catch (err: unknown) {
+            setError(getFriendlyAuthErrorMessage(err));
+            if (signupEmail && shouldOfferConfirmationResend(err)) {
+                setPendingVerificationEmail(signupEmail);
+            }
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleResendConfirmation = async () => {
+        if (!pendingVerificationEmail) {
+            return;
+        }
+
+        setResendingConfirmation(true);
+        setError(null);
+
+        try {
+            const { error: resendError } = await resendConfirmationEmail({
+                supabase,
+                email: pendingVerificationEmail,
+                origin: window.location.origin,
+            });
+
+            if (resendError) throw resendError;
+
+            setInfo(getResendConfirmationMessage(pendingVerificationEmail));
+        } catch (err: unknown) {
+            setError(getFriendlyAuthErrorMessage(err));
+        } finally {
+            setResendingConfirmation(false);
         }
     };
 
     const handleOAuthLogin = async (provider: 'google' | 'linkedin_oidc') => {
         setOauthLoading(provider);
         setError(null);
+
         try {
             const { error } = await supabase.auth.signInWithOAuth({
-                provider: provider,
+                provider,
                 options: {
-                    redirectTo: `${window.location.origin}/auth/v1/callback`
-                }
+                    redirectTo: getBrowserAuthRedirectUrl(window.location.origin),
+                },
             });
+
             if (error) throw error;
-        } catch (err: any) {
-            setError(err.message);
+        } catch (err: unknown) {
+            setError(getFriendlyAuthErrorMessage(err));
             setOauthLoading(null);
         }
     };
 
     return (
         <div className="min-h-screen bg-[#F8FAFC] flex font-sans text-slate-900 selection:bg-blue-100 relative">
-            
-            {/* Ambient Background Gradient */}
             <div className="absolute top-0 inset-x-0 h-96 bg-gradient-to-b from-blue-50 to-transparent z-0" />
 
-            {/* Left Side - Auth Form */}
             <div className="flex-1 flex flex-col justify-center py-12 px-4 sm:px-6 lg:flex-none lg:px-20 xl:px-24 w-full lg:w-[480px] z-10">
                 <div className="mx-auto w-full max-w-sm lg:w-96 bg-white p-8 rounded-[2rem] shadow-xl border border-slate-100">
                     <div className="flex justify-center mb-8 cursor-pointer" onClick={() => router.push('/')}>
-                        <img 
-                            src="/eLautopost_logo.png" 
-                            alt="eLAutopost AI Logo" 
+                        <img
+                            src="/eLautopost_logo.png"
+                            alt="eLAutopost AI Logo"
                             className="h-12 w-auto object-contain"
                         />
                     </div>
@@ -95,10 +140,47 @@ export default function SignupPage() {
                     </div>
 
                     <div className="mt-8">
+                        {info && (
+                            <div className="mb-6 rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-800">
+                                <div className="flex items-start gap-3">
+                                    <MailCheck className="mt-0.5 h-4 w-4 shrink-0" />
+                                    <div className="space-y-1">
+                                        <p>{info}</p>
+                                        <p className="text-blue-700">
+                                            Open the email and click the verification link before your first password login.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         {error && (
-                            <div className={`mb-6 flex items-center gap-2 p-3 text-sm rounded-xl border ${error.includes('check your email') ? 'bg-blue-50 border-blue-100 text-blue-700' : 'bg-red-50 border-red-100 text-red-600'}`}>
+                            <div className="mb-6 flex items-center gap-2 rounded-xl border border-red-100 bg-red-50 p-3 text-sm text-red-600">
                                 <AlertCircle className="h-4 w-4 shrink-0" />
                                 <p>{error}</p>
+                            </div>
+                        )}
+
+                        {pendingVerificationEmail && (
+                            <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                <p className="text-sm text-slate-700">
+                                    Did not get the confirmation email for <span className="font-semibold">{pendingVerificationEmail}</span>?
+                                </p>
+                                <button
+                                    type="button"
+                                    onClick={handleResendConfirmation}
+                                    disabled={resendingConfirmation}
+                                    className="mt-3 inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    {resendingConfirmation ? (
+                                        <>
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                            Resending...
+                                        </>
+                                    ) : (
+                                        'Resend confirmation email'
+                                    )}
+                                </button>
                             </div>
                         )}
 
@@ -126,7 +208,7 @@ export default function SignupPage() {
                             >
                                 {oauthLoading === 'linkedin_oidc' ? <Loader2 className="animate-spin h-5 w-5 mr-3 text-white" /> : (
                                     <svg className="h-5 w-5 mr-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-                                        <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+                                        <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
                                     </svg>
                                 )}
                                 Sign Up with LinkedIn
@@ -163,6 +245,7 @@ export default function SignupPage() {
                                         id="email"
                                         name="email"
                                         type="email"
+                                        autoComplete="email"
                                         placeholder="Email address"
                                         required
                                         value={email}
@@ -176,6 +259,7 @@ export default function SignupPage() {
                                         id="password"
                                         name="password"
                                         type="password"
+                                        autoComplete="new-password"
                                         placeholder="Password"
                                         required
                                         value={password}
@@ -196,18 +280,21 @@ export default function SignupPage() {
                                         Creating account...
                                     </>
                                 ) : (
-                                    'Create Account - ₹99/mo'
+                                    'Create account'
                                 )}
                             </button>
+
+                            <p className="text-center text-xs text-slate-500">
+                                We will send a confirmation link to your email before your first sign in.
+                            </p>
                         </form>
                     </div>
                 </div>
             </div>
 
-            {/* Right Side - Marketing */}
             <div className="hidden lg:flex relative w-0 flex-1 border-l border-slate-200 z-10 bg-white items-center justify-center p-12 overflow-hidden">
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-blue-50/50 rounded-full blur-3xl -z-10" />
-                
+
                 <div className="max-w-xl mx-auto space-y-12">
                     <div className="inline-flex items-center space-x-2 bg-blue-50 border border-blue-100 rounded-full px-4 py-2 shadow-sm text-blue-700 font-semibold mb-2">
                         <ShieldCheck className="h-4 w-4" />
@@ -217,7 +304,7 @@ export default function SignupPage() {
                     <h2 className="text-5xl text-slate-900 font-extrabold tracking-tight leading-tight">
                         Transform your brand reach in minutes.
                     </h2>
-                    
+
                     <ul className="space-y-6">
                         {[
                             '7-Day Zero Commitment Trial',

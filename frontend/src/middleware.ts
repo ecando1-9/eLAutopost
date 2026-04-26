@@ -3,12 +3,20 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 function applySecurityHeaders(response: NextResponse) {
+    const scriptSrc = process.env.NODE_ENV === 'production'
+        ? "script-src 'self' 'unsafe-inline' https://checkout.razorpay.com"
+        : "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://checkout.razorpay.com";
+
     response.headers.set('X-Frame-Options', 'DENY');
     response.headers.set('X-Content-Type-Options', 'nosniff');
     response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
     response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
     response.headers.set('Cross-Origin-Opener-Policy', 'same-origin');
     response.headers.set('Cross-Origin-Resource-Policy', 'same-site');
+    response.headers.set('X-Permitted-Cross-Domain-Policies', 'none');
+    if (process.env.NODE_ENV === 'production') {
+        response.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    }
     response.headers.set(
         'Content-Security-Policy',
         [
@@ -17,11 +25,12 @@ function applySecurityHeaders(response: NextResponse) {
             "frame-ancestors 'none'",
             "object-src 'none'",
             "form-action 'self'",
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+            scriptSrc,
             "style-src 'self' 'unsafe-inline'",
             "img-src 'self' data: blob: https:",
             "font-src 'self' data: https:",
-            "connect-src 'self' https://*.supabase.co https://api.openai.com https://generativelanguage.googleapis.com https://api.linkedin.com https://www.linkedin.com",
+            "frame-src 'self' https://checkout.razorpay.com https://api.razorpay.com",
+            "connect-src 'self' https://*.supabase.co https://api.openai.com https://generativelanguage.googleapis.com https://api.linkedin.com https://www.linkedin.com https://api.razorpay.com",
         ].join('; ')
     );
     return response;

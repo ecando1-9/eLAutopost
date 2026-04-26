@@ -127,7 +127,7 @@ export default function CreateContentPage() {
 function CreateContentPageContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
-    const supabase = createClientComponentClient();
+    const [supabase] = useState(() => createClientComponentClient());
     
     // UI State
     const [currentStep, setCurrentStep] = useState<Step>(1);
@@ -174,6 +174,14 @@ function CreateContentPageContent() {
     });
     const [userScheduleInfo, setUserScheduleInfo] = useState<{ time: string; days: string[]; postsPerDay: number } | null>(null);
     const [linkedInConnected, setLinkedInConnected] = useState<boolean | null>(null);
+
+    useEffect(() => {
+        return () => {
+            if (pdfUrl) {
+                window.URL.revokeObjectURL(pdfUrl);
+            }
+        };
+    }, [pdfUrl]);
 
     // Template/Theme Data
     const templates = [
@@ -339,7 +347,12 @@ function CreateContentPageContent() {
         setLoading(true);
         setError(null);
         setResult(null);
-        setPdfUrl(null);
+        setPdfUrl((current) => {
+            if (current) {
+                window.URL.revokeObjectURL(current);
+            }
+            return null;
+        });
 
         try {
             const { data: { session } } = await supabase.auth.getSession();
@@ -411,7 +424,12 @@ function CreateContentPageContent() {
             
             const blob = await response.blob();
             const url = window.URL.createObjectURL(blob);
-            setPdfUrl(url);
+            setPdfUrl((current) => {
+                if (current) {
+                    window.URL.revokeObjectURL(current);
+                }
+                return url;
+            });
             
             // Auto download
             const a = document.createElement('a');

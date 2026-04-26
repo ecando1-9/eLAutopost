@@ -31,7 +31,7 @@ export async function POST(request: Request, { params }: RouteParams) {
 
         const body = await request.json().catch(() => ({}));
         const response = await fetch(
-            `${BACKEND_URL}/posts/${params.postId}/ai-rewrite?user_id=${session.user.id}`,
+            `${BACKEND_URL}/posts/${params.postId}/ai-rewrite`,
             {
                 method: 'POST',
                 headers: {

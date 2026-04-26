@@ -29,7 +29,7 @@ export async function GET(_request: Request, { params }: RouteParams) {
         }
 
         const response = await fetch(
-            `${BACKEND_URL}/posts/${params.postId}?user_id=${session.user.id}`,
+            `${BACKEND_URL}/posts/${params.postId}`,
             {
                 headers: { Authorization: `Bearer ${session.access_token}` },
                 cache: 'no-store',
@@ -61,7 +61,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
 
         const body = await request.json();
         const response = await fetch(
-            `${BACKEND_URL}/posts/${params.postId}?user_id=${session.user.id}`,
+            `${BACKEND_URL}/posts/${params.postId}`,
             {
                 method: 'PATCH',
                 headers: {
@@ -96,7 +96,7 @@ export async function DELETE(_request: Request, { params }: RouteParams) {
         }
 
         const response = await fetch(
-            `${BACKEND_URL}/posts/${params.postId}?user_id=${session.user.id}`,
+            `${BACKEND_URL}/posts/${params.postId}`,
             {
                 method: 'DELETE',
                 headers: { Authorization: `Bearer ${session.access_token}` },

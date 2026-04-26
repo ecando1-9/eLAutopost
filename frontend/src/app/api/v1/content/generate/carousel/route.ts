@@ -25,7 +25,7 @@ export async function POST(request: Request) {
 
         const body = await request.json();
 
-        const response = await fetch(`${BACKEND_URL}/content/generate/carousel?user_id=${session.user.id}`, {
+        const response = await fetch(`${BACKEND_URL}/content/generate/carousel`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

@@ -42,7 +42,7 @@ export default function AppShell({
 }: AppShellProps) {
     const pathname = usePathname();
     const router = useRouter();
-    const supabase = createClientComponentClient();
+    const [supabase] = useState(() => createClientComponentClient());
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const [signingOut, setSigningOut] = useState(false);
     const [userEmail, setUserEmail] = useState<string>('');
@@ -60,13 +60,21 @@ export default function AppShell({
     );
 
     useEffect(() => {
+        let isActive = true;
+
         const loadUser = async () => {
             const {
                 data: { session },
             } = await supabase.auth.getSession();
-            setUserEmail(session?.user?.email || '');
+            if (isActive) {
+                setUserEmail(session?.user?.email || '');
+            }
         };
         void loadUser();
+
+        return () => {
+            isActive = false;
+        };
     }, [supabase]);
 
     const isActive = (href: string) => {
@@ -80,7 +88,7 @@ export default function AppShell({
         setSigningOut(true);
         try {
             await supabase.auth.signOut();
-            router.push('/login');
+            router.replace('/login');
         } finally {
             setSigningOut(false);
         }

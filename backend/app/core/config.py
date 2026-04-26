@@ -93,6 +93,29 @@ class Settings(BaseSettings):
     )
     
     # =============================================================================
+    # BILLING / RAZORPAY CONFIGURATION
+    # =============================================================================
+    RAZORPAY_KEY_ID: Optional[str] = Field(default=None, env="RAZORPAY_KEY_ID")
+    RAZORPAY_KEY_SECRET: Optional[str] = Field(default=None, env="RAZORPAY_KEY_SECRET")
+    RAZORPAY_WEBHOOK_SECRET: Optional[str] = Field(default=None, env="RAZORPAY_WEBHOOK_SECRET")
+    RAZORPAY_CURRENCY: str = Field(default="INR", env="RAZORPAY_CURRENCY")
+    RAZORPAY_PLAN_NAME: str = Field(default="monthly", env="RAZORPAY_PLAN_NAME")
+    RAZORPAY_PLAN_LABEL: str = Field(default="Monthly Pro", env="RAZORPAY_PLAN_LABEL")
+    RAZORPAY_PLAN_AMOUNT_PAISE: int = Field(
+        default=29900, env="RAZORPAY_PLAN_AMOUNT_PAISE"
+    )
+    RAZORPAY_COMPANY_NAME: str = Field(
+        default="eLAutopost AI", env="RAZORPAY_COMPANY_NAME"
+    )
+    RAZORPAY_CHECKOUT_DESCRIPTION: str = Field(
+        default="Monthly LinkedIn automation subscription",
+        env="RAZORPAY_CHECKOUT_DESCRIPTION"
+    )
+    RAZORPAY_THEME_COLOR: str = Field(
+        default="#2563eb", env="RAZORPAY_THEME_COLOR"
+    )
+
+    # =============================================================================
     # GOOGLE OAUTH CONFIGURATION
     # =============================================================================
     GOOGLE_CLIENT_ID: str = Field(..., env="GOOGLE_CLIENT_ID")
@@ -232,6 +255,29 @@ class Settings(BaseSettings):
             raise ValueError(
                 "LINKEDIN_DEFAULT_TARGET must be either 'person' or 'organization'"
             )
+        return normalized
+
+    @field_validator("RAZORPAY_CURRENCY")
+    def validate_razorpay_currency(cls, v):
+        """Normalize Razorpay currency code."""
+        normalized = (v or "INR").strip().upper()
+        if len(normalized) != 3:
+            raise ValueError("RAZORPAY_CURRENCY must be a 3-letter ISO currency code")
+        return normalized
+
+    @field_validator("RAZORPAY_PLAN_AMOUNT_PAISE")
+    def validate_razorpay_amount(cls, v):
+        """Ensure billing amount is positive."""
+        if v < 100:
+            raise ValueError("RAZORPAY_PLAN_AMOUNT_PAISE must be at least 100")
+        return v
+
+    @field_validator("RAZORPAY_THEME_COLOR")
+    def validate_razorpay_theme_color(cls, v):
+        """Ensure the Razorpay theme color is a valid hex string."""
+        normalized = (v or "#2563eb").strip()
+        if not normalized.startswith("#") or len(normalized) not in {4, 7}:
+            raise ValueError("RAZORPAY_THEME_COLOR must be a hex color like #2563eb")
         return normalized
     
     class Config:

@@ -103,6 +103,13 @@ class UserLogin(BaseModel):
     password: str = Field(..., description="User password")
 
 
+class SignupResponse(BaseModel):
+    """Signup response when email confirmation is required."""
+    user_id: str
+    email_confirmation_required: bool = True
+    message: str
+
+
 class TokenResponse(BaseModel):
     """JWT token response model."""
     access_token: str
@@ -380,6 +387,77 @@ class OAuthCallback(BaseModel):
         if v:
             return sanitize_input(v, max_length=500)
         return v
+
+
+# =============================================================================
+# BILLING MODELS
+# =============================================================================
+class BillingPlan(BaseModel):
+    """Public billing plan metadata for the frontend."""
+    enabled: bool
+    provider: str = "razorpay"
+    plan_name: str
+    display_name: str
+    price: float
+    amount_paise: int
+    currency: str
+
+
+class BillingCheckoutRequest(BaseModel):
+    """Checkout request model for Razorpay order creation."""
+    plan_name: Optional[str] = Field(default=None, max_length=50)
+
+    @validator("plan_name")
+    def sanitize_plan_name(cls, v):
+        if v:
+            return sanitize_input(v, max_length=50)
+        return v
+
+
+class BillingCheckoutResponse(BaseModel):
+    """Response payload used to open Razorpay Checkout."""
+    key_id: str
+    order_id: str
+    amount: int
+    currency: str
+    name: str
+    description: str
+    prefill: dict
+    notes: dict
+    theme: dict
+
+
+class BillingVerifyRequest(BaseModel):
+    """Verify checkout success payload returned by Razorpay Checkout."""
+    razorpay_order_id: str = Field(..., min_length=3, max_length=100)
+    razorpay_payment_id: str = Field(..., min_length=3, max_length=100)
+    razorpay_signature: str = Field(..., min_length=10, max_length=512)
+
+    @validator("razorpay_order_id", "razorpay_payment_id", "razorpay_signature")
+    def sanitize_billing_token(cls, v):
+        return sanitize_input(v, max_length=512)
+
+
+class PaymentRecord(BaseModel):
+    """Payment record summary returned to the client."""
+    id: str
+    status: str
+    amount: float
+    currency: str
+    provider: str
+    payment_method: Optional[str] = None
+    razorpay_order_id: Optional[str] = None
+    razorpay_payment_id: Optional[str] = None
+    paid_at: Optional[datetime] = None
+    verified_at: Optional[datetime] = None
+
+
+class BillingVerifyResponse(BaseModel):
+    """Verification response after successful payment."""
+    success: bool = True
+    message: str
+    subscription: dict
+    payment: PaymentRecord
 
 
 # =============================================================================

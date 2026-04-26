@@ -21,11 +21,11 @@ Performance:
 from fastapi import APIRouter, HTTPException, status, Request, Depends
 from typing import Optional, List
 from pydantic import BaseModel, Field
-from datetime import timedelta
 import asyncio
 
 from ..core.config import logger
 from ..core.datetime_utils import is_future_datetime, utc_now
+from ..services.billing import billing_service
 from ..services.content_queue import queue_service
 from ..services.scheduler import scheduler_service
 from ..worker.auto_generator import auto_generator_worker
@@ -283,28 +283,7 @@ async def get_user_dashboard(
         # -----------------------------------------------------------------------
         async def get_subscription():
             try:
-                result = supabase_client.admin.table("subscriptions").select(
-                    "*"
-                ).eq("user_id", user_id).limit(1).execute()
-
-                if result.data:
-                    return result.data[0]
-
-                # Self-heal: create trial subscription for new users
-                trial_end = now.replace(microsecond=0) + timedelta(days=30)
-                created = supabase_client.admin.table("subscriptions").upsert(
-                    {
-                        "user_id": user_id,
-                        "plan_name": "monthly",
-                        "price": 299.00,
-                        "currency": "INR",
-                        "status": "trial",
-                        "trial_start": now.isoformat(),
-                        "trial_end": trial_end.isoformat(),
-                    },
-                    on_conflict="user_id",
-                ).execute()
-                return created.data[0] if created.data else {"status": "trial"}
+                return await billing_service.get_or_create_subscription(user_id)
             except Exception as e:
                 logger.error(f"Failed to fetch subscription for {user_id}: {e}")
                 return {"status": "expired"}
@@ -420,6 +399,7 @@ async def get_user_dashboard(
         return {
             "success": True,
             "linkedin_connected": linkedin_connected,
+            "billing": billing_service.get_plan_metadata(),
             "subscription": subscription,
             "usage": usage,
             "schedule": schedule,

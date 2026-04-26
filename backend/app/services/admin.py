@@ -89,10 +89,11 @@ class AdminService:
         """
         Resolve effective subscription status when restoring a user.
         """
+        renewal_date = parse_datetime_utc(sub.get("renewal_date"))
         trial_end = parse_datetime_utc(sub.get("trial_end"))
         if trial_end and trial_end > utc_now():
             return "trial"
-        if sub.get("subscription_start"):
+        if renewal_date and renewal_date > utc_now():
             return "active"
         return "expired"
 
