@@ -87,6 +87,7 @@ interface RazorpayCheckoutPayload {
     amount: number;
     currency: string;
     name: string;
+    image?: string;
     description: string;
     prefill: {
         name?: string;
@@ -223,12 +224,14 @@ export default function UserDashboard() {
             }
 
             const checkoutData: RazorpayCheckoutPayload = await response.json();
+            const checkoutLogo = checkoutData.image || `${window.location.origin}/eLautopost_logo.png`;
 
             const razorpay = new window.Razorpay({
                 key: checkoutData.key_id,
                 amount: checkoutData.amount,
                 currency: checkoutData.currency,
                 name: checkoutData.name,
+                image: checkoutLogo,
                 description: checkoutData.description,
                 order_id: checkoutData.order_id,
                 prefill: checkoutData.prefill,
