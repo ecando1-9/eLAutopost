@@ -13,9 +13,17 @@ CREATE TABLE IF NOT EXISTS public.billing_plan_settings (
     billing_period_days INTEGER NOT NULL DEFAULT 30 CHECK (billing_period_days >= 1),
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     checkout_description TEXT,
+    features JSONB NOT NULL DEFAULT '[]'::jsonb,
+    sort_order INTEGER NOT NULL DEFAULT 100,
+    is_popular BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+ALTER TABLE public.billing_plan_settings
+    ADD COLUMN IF NOT EXISTS features JSONB NOT NULL DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 100,
+    ADD COLUMN IF NOT EXISTS is_popular BOOLEAN NOT NULL DEFAULT FALSE;
 
 INSERT INTO public.billing_plan_settings (
     plan_name,
@@ -23,17 +31,47 @@ INSERT INTO public.billing_plan_settings (
     amount_paise,
     currency,
     billing_period_days,
-    checkout_description
+    checkout_description,
+    features,
+    sort_order,
+    is_popular
 )
 VALUES (
-    'monthly',
-    'Monthly Pro',
+    'starter',
+    'Starter',
+    9900,
+    'INR',
+    30,
+    'Starter LinkedIn content plan',
+    '["1 Post Per Day Limit", "Basic Content Generation", "Manual Publishing", "Standard Email Support"]'::jsonb,
+    10,
+    FALSE
+),
+(
+    'pro',
+    'Pro Growth Engine',
     29900,
     'INR',
     30,
-    'Monthly LinkedIn automation subscription'
+    'Complete LinkedIn brand growth suite',
+    '["Full AI Strategy Engine", "Smart Auto-Post Scheduler", "Premium PDF Carousels", "30-Day Content Calendar", "Engagement Scoring"]'::jsonb,
+    20,
+    TRUE
 )
-ON CONFLICT (plan_name) DO NOTHING;
+ON CONFLICT (plan_name) DO UPDATE
+SET display_name = EXCLUDED.display_name,
+    amount_paise = EXCLUDED.amount_paise,
+    currency = EXCLUDED.currency,
+    billing_period_days = EXCLUDED.billing_period_days,
+    checkout_description = EXCLUDED.checkout_description,
+    features = EXCLUDED.features,
+    sort_order = EXCLUDED.sort_order,
+    is_popular = EXCLUDED.is_popular,
+    is_active = TRUE;
+
+UPDATE public.billing_plan_settings
+SET is_active = FALSE
+WHERE plan_name = 'monthly';
 
 CREATE TABLE IF NOT EXISTS public.billing_coupons (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

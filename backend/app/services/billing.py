@@ -35,8 +35,9 @@ class BillingService:
         return bool(settings.RAZORPAY_KEY_ID and settings.RAZORPAY_KEY_SECRET)
 
     def get_plan_metadata(self) -> Dict[str, Any]:
-        """Expose the single app plan to the frontend."""
-        plan = self.get_active_plan()
+        """Expose billing plans to the frontend."""
+        plans = self.get_active_plans()
+        plan = self.get_plan_by_name("pro") or (plans[0] if plans else self._fallback_plan())
         return {
             "enabled": self.is_configured(),
             "provider": "razorpay",
@@ -46,30 +47,71 @@ class BillingService:
             "amount_paise": plan["amount_paise"],
             "currency": plan["currency"],
             "billing_period_days": plan["billing_period_days"],
+            "plans": [
+                {
+                    "plan_name": item["plan_name"],
+                    "display_name": item["display_name"],
+                    "price": round(item["amount_paise"] / 100, 2),
+                    "amount_paise": item["amount_paise"],
+                    "currency": item["currency"],
+                    "billing_period_days": item["billing_period_days"],
+                    "checkout_description": item.get("checkout_description"),
+                    "features": item.get("features") or [],
+                    "is_popular": bool(item.get("is_popular")),
+                }
+                for item in plans
+            ],
         }
 
-    def get_active_plan(self) -> Dict[str, Any]:
-        """Load editable plan settings, falling back to env defaults."""
-        fallback = {
+    def _fallback_plan(self) -> Dict[str, Any]:
+        return {
             "plan_name": settings.RAZORPAY_PLAN_NAME,
             "display_name": settings.RAZORPAY_PLAN_LABEL,
             "amount_paise": settings.RAZORPAY_PLAN_AMOUNT_PAISE,
             "currency": settings.RAZORPAY_CURRENCY,
             "billing_period_days": 30,
             "checkout_description": settings.RAZORPAY_CHECKOUT_DESCRIPTION,
+            "features": [],
+            "sort_order": 100,
+            "is_popular": False,
             "is_active": True,
         }
+
+    def get_active_plans(self) -> list[Dict[str, Any]]:
+        """Load active plan settings, falling back to env defaults."""
+        try:
+            result = supabase_client.admin.table("billing_plan_settings").select(
+                "*"
+            ).eq("is_active", True).order("sort_order").execute()
+            if result.data:
+                return result.data
+        except Exception as e:
+            logger.warning(f"Using env billing plan fallback: {e}")
+
+        return [self._fallback_plan()]
+
+    def get_active_plan(self) -> Dict[str, Any]:
+        """Load the default active plan."""
+        return self.get_plan_by_name("pro") or self.get_active_plans()[0]
+
+    def get_plan_by_name(self, plan_name: Optional[str]) -> Optional[Dict[str, Any]]:
+        """Load a specific active plan."""
+        if not plan_name:
+            return None
 
         try:
             result = supabase_client.admin.table("billing_plan_settings").select(
                 "*"
-            ).eq("is_active", True).order("updated_at", desc=True).limit(1).execute()
+            ).eq("plan_name", plan_name).eq("is_active", True).limit(1).execute()
             if result.data:
-                return {**fallback, **result.data[0]}
+                return result.data[0]
         except Exception as e:
-            logger.warning(f"Using env billing plan fallback: {e}")
+            logger.warning(f"Unable to load billing plan {plan_name}: {e}")
 
-        return fallback
+        fallback = self._fallback_plan()
+        if plan_name == fallback["plan_name"]:
+            return fallback
+        return None
 
     def validate_coupon(
         self,
@@ -290,9 +332,9 @@ class BillingService:
             raise RuntimeError("Unable to load your account profile for checkout.")
 
         subscription = await self.get_or_create_subscription(user_id)
-        plan_metadata = self.get_plan_metadata()
-        plan_code = plan_name or plan_metadata["plan_name"]
-        discount = self.validate_coupon(coupon_code, plan_metadata["amount_paise"])
+        selected_plan = self.get_plan_by_name(plan_name) or self.get_active_plan()
+        plan_code = selected_plan["plan_name"]
+        discount = self.validate_coupon(coupon_code, selected_plan["amount_paise"])
         final_amount_paise = discount["final_amount_paise"]
         now = utc_now()
         receipt = f"sub_{user_id.replace('-', '')[:16]}_{int(now.timestamp())}"
@@ -302,7 +344,7 @@ class BillingService:
             "/orders",
             payload={
                 "amount": final_amount_paise,
-                "currency": plan_metadata["currency"],
+                "currency": selected_plan["currency"],
                 "receipt": receipt,
                 "notes": {
                     "user_id": user_id,
@@ -319,10 +361,10 @@ class BillingService:
                 "plan_name": plan_code,
                 "amount": round(final_amount_paise / 100, 2),
                 "amount_paise": final_amount_paise,
-                "original_amount_paise": plan_metadata["amount_paise"],
+                "original_amount_paise": selected_plan["amount_paise"],
                 "discount_amount_paise": discount["discount_amount_paise"],
                 "final_amount_paise": final_amount_paise,
-                "currency": plan_metadata["currency"],
+                "currency": selected_plan["currency"],
                 "status": "created",
                 "receipt": receipt,
                 "razorpay_order_id": order.get("id"),
@@ -337,10 +379,10 @@ class BillingService:
             "amount": order.get("amount"),
             "currency": order.get("currency"),
             "name": settings.RAZORPAY_COMPANY_NAME,
-            "description": self.get_active_plan().get("checkout_description")
+            "description": selected_plan.get("checkout_description")
             or settings.RAZORPAY_CHECKOUT_DESCRIPTION,
             "discount_amount_paise": discount["discount_amount_paise"],
-            "original_amount_paise": plan_metadata["amount_paise"],
+            "original_amount_paise": selected_plan["amount_paise"],
             "prefill": {
                 "name": user.get("full_name") or "User",
                 "email": user.get("email") or "",
@@ -399,7 +441,7 @@ class BillingService:
         elif current_trial_end and current_trial_end > now:
             renewal_anchor = current_trial_end
 
-        plan = self.get_active_plan()
+        plan = self.get_plan_by_name(payment_row.get("plan_name")) or self.get_active_plan()
         next_renewal = renewal_anchor + timedelta(days=plan["billing_period_days"])
 
         subscription_update = {

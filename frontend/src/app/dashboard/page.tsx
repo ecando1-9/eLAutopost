@@ -29,6 +29,20 @@ interface BillingPlan {
     price: number;
     amount_paise: number;
     currency: string;
+    billing_period_days?: number;
+    plans?: BillingPlanOption[];
+}
+
+interface BillingPlanOption {
+    plan_name: string;
+    display_name: string;
+    price: number;
+    amount_paise: number;
+    currency: string;
+    billing_period_days: number;
+    checkout_description?: string;
+    features: string[];
+    is_popular?: boolean;
 }
 
 interface DashboardData {
@@ -105,6 +119,7 @@ export default function UserDashboard() {
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState<DashboardData | null>(null);
     const [checkoutLoading, setCheckoutLoading] = useState(false);
+    const [checkoutPlanName, setCheckoutPlanName] = useState<string | null>(null);
     const [couponCode, setCouponCode] = useState('');
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const mountedRef = useRef(true);
@@ -177,7 +192,7 @@ export default function UserDashboard() {
         }
     };
 
-    const handleStartCheckout = async () => {
+    const handleStartCheckout = async (planName?: string) => {
         if (!data?.billing?.enabled) {
             toast.error('Razorpay is not configured on the server yet.');
             return;
@@ -188,6 +203,8 @@ export default function UserDashboard() {
             return;
         }
 
+        const selectedPlanName = planName || data.billing.plan_name;
+        setCheckoutPlanName(selectedPlanName);
         setCheckoutLoading(true);
         try {
             const response = await fetch('/api/v1/billing/create-order', {
@@ -195,7 +212,10 @@ export default function UserDashboard() {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ coupon_code: couponCode.trim() || undefined }),
+                body: JSON.stringify({
+                    plan_name: selectedPlanName,
+                    coupon_code: couponCode.trim() || undefined,
+                }),
             });
 
             if (!response.ok) {
@@ -251,6 +271,7 @@ export default function UserDashboard() {
         } catch (error: any) {
             toast.error(error?.message || 'Failed to start checkout');
             setCheckoutLoading(false);
+            setCheckoutPlanName(null);
         }
     };
 
@@ -321,10 +342,21 @@ export default function UserDashboard() {
     const isSubscribed = data?.subscription?.status === 'active';
     const hasAccess = isTrialActive || isSubscribed;
     const billingEnabled = !!data?.billing?.enabled;
-    const billingPrice = data?.billing
-        ? `${data.billing.currency} ${(data.billing.amount_paise / 100).toFixed(2)}`
-        : 'INR 299.00';
-    const planDisplayName = data?.billing?.display_name || 'Monthly Pro';
+    const billingPlans = data?.billing?.plans?.length
+        ? data.billing.plans
+        : data?.billing
+            ? [{
+                plan_name: data.billing.plan_name,
+                display_name: data.billing.display_name,
+                price: data.billing.price,
+                amount_paise: data.billing.amount_paise,
+                currency: data.billing.currency,
+                billing_period_days: data.billing.billing_period_days || 30,
+                checkout_description: 'Monthly LinkedIn automation subscription',
+                features: [],
+                is_popular: true,
+            }]
+            : [];
     const checkoutButtonLabel = isSubscribed
         ? 'Extend 30 Days'
         : isTrialActive
@@ -381,7 +413,7 @@ export default function UserDashboard() {
                             </div>
                             <button
                                 type="button"
-                                onClick={handleStartCheckout}
+                                onClick={() => handleStartCheckout()}
                                 disabled={!billingEnabled || checkoutLoading}
                                 className="md:ml-auto inline-flex items-center justify-center gap-2 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                             >
@@ -488,60 +520,58 @@ export default function UserDashboard() {
                 </div>
 
                 <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                    <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-                        <div className="max-w-2xl">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                        <div>
                             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">Billing</p>
-                            <h2 className="mt-2 text-2xl font-bold text-slate-900">{planDisplayName}</h2>
+                            <h2 className="mt-2 text-2xl font-bold text-slate-900">Choose Your Plan</h2>
                             <p className="mt-2 text-sm leading-6 text-slate-600">
-                                Keep automation active with secure Razorpay checkout. Every successful payment extends access by 30 days.
+                                {planWindowLabel}: {planWindowValue} · Status: {(data?.subscription?.status || 'trial').toUpperCase()}
                             </p>
-                            <div className="mt-4 flex flex-wrap gap-3">
-                                <span className="inline-flex items-center rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-800">
-                                    {billingPrice} / 30 days
-                                </span>
-                                <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                                    {planWindowLabel}: {planWindowValue}
-                                </span>
-                                <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                                    Status: {(data?.subscription?.status || 'trial').toUpperCase()}
-                                </span>
-                            </div>
-                            {data?.subscription?.last_payment_date && (
-                                <p className="mt-4 text-xs text-slate-500">
-                                    Last payment recorded on {formatBillingDate(data.subscription.last_payment_date)}.
-                                </p>
-                            )}
                         </div>
+                        <input
+                            value={couponCode}
+                            onChange={(event) => setCouponCode(event.target.value.toUpperCase())}
+                            placeholder="Coupon code"
+                            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100 md:w-52"
+                        />
+                    </div>
 
-                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5 lg:w-[320px]">
-                            <div className="flex items-center gap-3">
-                                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-sky-100 text-sky-700">
-                                    <CreditCard className="h-5 w-5" />
-                                </div>
-                                <div>
-                                    <p className="text-sm font-semibold text-slate-900">Pay Securely with Razorpay</p>
-                                    <p className="text-xs text-slate-500">Cards, UPI, netbanking, and wallets</p>
-                                </div>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={handleStartCheckout}
-                                disabled={!billingEnabled || checkoutLoading}
-                                className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    <div className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-2">
+                        {billingPlans.map((plan) => (
+                            <div
+                                key={plan.plan_name}
+                                className={`relative rounded-xl border p-5 ${plan.is_popular ? 'border-sky-300 bg-sky-50/40' : 'border-slate-200 bg-white'}`}
                             >
-                                {checkoutLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
-                                {billingEnabled ? checkoutButtonLabel : 'Waiting for Billing Setup'}
-                            </button>
-                            <p className="mt-3 text-xs leading-5 text-slate-500">
-                                Use this any time to upgrade from trial or extend your current subscription before it ends.
-                            </p>
-                            <input
-                                value={couponCode}
-                                onChange={(event) => setCouponCode(event.target.value.toUpperCase())}
-                                placeholder="Coupon code"
-                                className="mt-4 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
-                            />
-                        </div>
+                                {plan.is_popular && (
+                                    <span className="absolute right-4 top-4 rounded-full bg-sky-600 px-3 py-1 text-xs font-semibold text-white">
+                                        Most Popular
+                                    </span>
+                                )}
+                                <p className="text-lg font-bold text-slate-900">{plan.display_name}</p>
+                                <p className="mt-1 text-sm text-slate-600">{plan.checkout_description}</p>
+                                <div className="mt-5 flex items-end gap-1">
+                                    <span className="text-3xl font-bold text-slate-950">₹{(plan.amount_paise / 100).toFixed(0)}</span>
+                                    <span className="pb-1 text-sm font-medium text-slate-500">/month</span>
+                                </div>
+                                <ul className="mt-5 space-y-2">
+                                    {plan.features.map((feature) => (
+                                        <li key={feature} className="flex items-start gap-2 text-sm text-slate-700">
+                                            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                                            {feature}
+                                        </li>
+                                    ))}
+                                </ul>
+                                <button
+                                    type="button"
+                                    onClick={() => handleStartCheckout(plan.plan_name)}
+                                    disabled={!billingEnabled || checkoutLoading}
+                                    className={`mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${plan.is_popular ? 'bg-sky-600 text-white hover:bg-sky-700' : 'border border-slate-300 bg-white text-slate-800 hover:bg-slate-50'}`}
+                                >
+                                    {checkoutLoading && checkoutPlanName === plan.plan_name ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+                                    {billingEnabled ? (plan.plan_name === 'starter' ? 'Go with Starter' : checkoutButtonLabel) : 'Waiting for Billing Setup'}
+                                </button>
+                            </div>
+                        ))}
                     </div>
                 </div>
 

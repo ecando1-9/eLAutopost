@@ -402,6 +402,7 @@ class BillingPlan(BaseModel):
     amount_paise: int
     currency: str
     billing_period_days: int = 30
+    plans: list = []
 
 
 class BillingCheckoutRequest(BaseModel):
