@@ -105,6 +105,7 @@ export default function UserDashboard() {
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState<DashboardData | null>(null);
     const [checkoutLoading, setCheckoutLoading] = useState(false);
+    const [couponCode, setCouponCode] = useState('');
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const mountedRef = useRef(true);
     const inFlightRef = useRef(false);
@@ -194,7 +195,7 @@ export default function UserDashboard() {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({}),
+                body: JSON.stringify({ coupon_code: couponCode.trim() || undefined }),
             });
 
             if (!response.ok) {
@@ -534,6 +535,12 @@ export default function UserDashboard() {
                             <p className="mt-3 text-xs leading-5 text-slate-500">
                                 Use this any time to upgrade from trial or extend your current subscription before it ends.
                             </p>
+                            <input
+                                value={couponCode}
+                                onChange={(event) => setCouponCode(event.target.value.toUpperCase())}
+                                placeholder="Coupon code"
+                                className="mt-4 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                            />
                         </div>
                     </div>
                 </div>

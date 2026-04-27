@@ -6,16 +6,16 @@
 2. Add these backend environment variables:
 
 ```env
-RAZORPAY_KEY_ID=rzp_live_or_test_key
-RAZORPAY_KEY_SECRET=your_secret
-RAZORPAY_WEBHOOK_SECRET=your_webhook_secret
-RAZORPAY_CURRENCY=INR
-RAZORPAY_PLAN_NAME=monthly
-RAZORPAY_PLAN_LABEL=Monthly Pro
+RAZORPAY_KEY_ID="rzp_live_or_test_key"
+RAZORPAY_KEY_SECRET="your_secret"
+RAZORPAY_WEBHOOK_SECRET="your_webhook_secret"
+RAZORPAY_CURRENCY="INR"
+RAZORPAY_PLAN_NAME="monthly"
+RAZORPAY_PLAN_LABEL="Monthly Pro"
 RAZORPAY_PLAN_AMOUNT_PAISE=29900
-RAZORPAY_COMPANY_NAME=eLAutopost AI
-RAZORPAY_CHECKOUT_DESCRIPTION=Monthly LinkedIn automation subscription
-RAZORPAY_THEME_COLOR=#2563eb
+RAZORPAY_COMPANY_NAME="eLAutopost AI"
+RAZORPAY_CHECKOUT_DESCRIPTION="Monthly LinkedIn automation subscription"
+RAZORPAY_THEME_COLOR="#2563eb"
 ```
 
 3. In Razorpay Dashboard, create a webhook pointing to:

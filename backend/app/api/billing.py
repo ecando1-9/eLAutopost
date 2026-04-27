@@ -43,6 +43,7 @@ async def create_billing_order(
         payload = await billing_service.create_checkout_order(
             user_id=user_id,
             plan_name=body.plan_name,
+            coupon_code=body.coupon_code,
         )
         return BillingCheckoutResponse(**payload)
     except RuntimeError as e:

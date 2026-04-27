@@ -37,6 +37,47 @@ export interface User {
     last_activity?: string;
 }
 
+export interface RevenueAnalytics {
+    month: string;
+    new_subscriptions: number;
+    revenue: number;
+    mrr_added: number;
+}
+
+export interface UsageAnalytics {
+    date: string;
+    active_users: number;
+    total_posts: number;
+    total_images: number;
+    total_linkedin_posts: number;
+    total_api_calls: number;
+}
+
+export interface BillingPlanSettings {
+    plan_name: string;
+    display_name: string;
+    amount_paise: number;
+    currency: string;
+    billing_period_days: number;
+    checkout_description?: string;
+    is_active: boolean;
+}
+
+export interface BillingCoupon {
+    id: string;
+    code: string;
+    description?: string;
+    discount_type: 'percent' | 'fixed';
+    discount_value: number;
+    max_redemptions?: number;
+    redeemed_count: number;
+    starts_at?: string;
+    ends_at?: string;
+    is_active: boolean;
+    created_at: string;
+    updated_at: string;
+}
+
 export type SubscriptionControlStatus = 'trial' | 'active' | 'expired' | 'cancelled' | 'blocked';
 
 export const adminService = {
@@ -53,12 +94,12 @@ export const adminService = {
     },
 
     getRevenueAnalytics: async () => {
-        const { data } = await api.get('/admin/analytics/revenue');
+        const { data } = await api.get<RevenueAnalytics[]>('/admin/analytics/revenue');
         return data;
     },
 
     getUsageAnalytics: async () => {
-        const { data } = await api.get('/admin/analytics/usage');
+        const { data } = await api.get<UsageAnalytics[]>('/admin/analytics/usage');
         return data;
     },
 
@@ -144,6 +185,40 @@ export const adminService = {
         const { data } = await api.post('/admin/subscriptions/activate', {
             user_id: userId,
         });
+        return data;
+    },
+
+    getBillingPlan: async () => {
+        const { data } = await api.get<BillingPlanSettings>('/admin/billing/plan');
+        return data;
+    },
+
+    updateBillingPlan: async (payload: Omit<BillingPlanSettings, 'is_active'>) => {
+        const { data } = await api.put<BillingPlanSettings>('/admin/billing/plan', payload);
+        return data;
+    },
+
+    getBillingCoupons: async () => {
+        const { data } = await api.get<BillingCoupon[]>('/admin/billing/coupons');
+        return data;
+    },
+
+    createBillingCoupon: async (payload: {
+        code: string;
+        description?: string;
+        discount_type: 'percent' | 'fixed';
+        discount_value: number;
+        max_redemptions?: number;
+        starts_at?: string;
+        ends_at?: string;
+        is_active: boolean;
+    }) => {
+        const { data } = await api.post<BillingCoupon>('/admin/billing/coupons', payload);
+        return data;
+    },
+
+    updateBillingCoupon: async (id: string, payload: Partial<BillingCoupon>) => {
+        const { data } = await api.patch<BillingCoupon>(`/admin/billing/coupons/${id}`, payload);
         return data;
     },
 

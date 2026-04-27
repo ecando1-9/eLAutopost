@@ -401,16 +401,24 @@ class BillingPlan(BaseModel):
     price: float
     amount_paise: int
     currency: str
+    billing_period_days: int = 30
 
 
 class BillingCheckoutRequest(BaseModel):
     """Checkout request model for Razorpay order creation."""
     plan_name: Optional[str] = Field(default=None, max_length=50)
+    coupon_code: Optional[str] = Field(default=None, max_length=40)
 
     @validator("plan_name")
     def sanitize_plan_name(cls, v):
         if v:
             return sanitize_input(v, max_length=50)
+        return v
+
+    @validator("coupon_code")
+    def sanitize_coupon_code(cls, v):
+        if v:
+            return sanitize_input(v, max_length=40).strip().upper()
         return v
 
 

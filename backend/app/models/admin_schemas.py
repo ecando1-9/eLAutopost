@@ -43,6 +43,9 @@ class AdminAction(str, Enum):
     SUBSCRIPTION_RESUMED = "subscription_resumed"
     USAGE_RESET = "usage_reset"
     ROLE_CHANGED = "role_changed"
+    BILLING_PLAN_UPDATED = "billing_plan_updated"
+    BILLING_COUPON_CREATED = "billing_coupon_created"
+    BILLING_COUPON_UPDATED = "billing_coupon_updated"
 
 
 # =============================================================================
@@ -160,6 +163,88 @@ class HoldSubscriptionRequest(BaseModel):
 class ResumeSubscriptionRequest(BaseModel):
     """Request to resume a held/cancelled subscription."""
     user_id: str = Field(..., description="User ID")
+
+
+class BillingPlanAdminResponse(BaseModel):
+    """Editable billing plan returned to admins."""
+    plan_name: str
+    display_name: str
+    amount_paise: int
+    currency: str
+    billing_period_days: int
+    checkout_description: Optional[str] = None
+    is_active: bool = True
+
+
+class UpdateBillingPlanRequest(BaseModel):
+    """Request to update the active billing plan."""
+    plan_name: str = Field(default="monthly", max_length=50)
+    display_name: str = Field(..., min_length=2, max_length=100)
+    amount_paise: int = Field(..., ge=100)
+    currency: str = Field(default="INR", min_length=3, max_length=3)
+    billing_period_days: int = Field(default=30, ge=1, le=365)
+    checkout_description: Optional[str] = Field(default=None, max_length=300)
+
+    @validator("plan_name", "display_name", "currency", "checkout_description")
+    def sanitize_plan_fields(cls, v):
+        if isinstance(v, str):
+            return sanitize_input(v, max_length=300).strip()
+        return v
+
+
+class BillingCouponResponse(BaseModel):
+    """Admin coupon response."""
+    id: str
+    code: str
+    description: Optional[str] = None
+    discount_type: str
+    discount_value: int
+    max_redemptions: Optional[int] = None
+    redeemed_count: int = 0
+    starts_at: Optional[datetime] = None
+    ends_at: Optional[datetime] = None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class CreateBillingCouponRequest(BaseModel):
+    """Request to create a checkout coupon."""
+    code: str = Field(..., min_length=2, max_length=40)
+    description: Optional[str] = Field(default=None, max_length=300)
+    discount_type: str = Field(..., pattern="^(percent|fixed)$")
+    discount_value: int = Field(..., ge=1)
+    max_redemptions: Optional[int] = Field(default=None, ge=1)
+    starts_at: Optional[datetime] = None
+    ends_at: Optional[datetime] = None
+    is_active: bool = True
+
+    @validator("code")
+    def sanitize_coupon_code(cls, v):
+        return sanitize_input(v, max_length=40).strip().upper()
+
+    @validator("description")
+    def sanitize_coupon_description(cls, v):
+        if v:
+            return sanitize_input(v, max_length=300).strip()
+        return v
+
+
+class UpdateBillingCouponRequest(BaseModel):
+    """Request to update a coupon."""
+    description: Optional[str] = Field(default=None, max_length=300)
+    discount_type: Optional[str] = Field(default=None, pattern="^(percent|fixed)$")
+    discount_value: Optional[int] = Field(default=None, ge=1)
+    max_redemptions: Optional[int] = Field(default=None, ge=1)
+    starts_at: Optional[datetime] = None
+    ends_at: Optional[datetime] = None
+    is_active: Optional[bool] = None
+
+    @validator("description")
+    def sanitize_update_description(cls, v):
+        if v:
+            return sanitize_input(v, max_length=300).strip()
+        return v
 
 
 # =============================================================================

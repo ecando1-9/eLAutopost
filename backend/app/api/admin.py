@@ -29,6 +29,11 @@ from ..models.admin_schemas import (
     CancelSubscriptionRequest,
     HoldSubscriptionRequest,
     ResumeSubscriptionRequest,
+    BillingPlanAdminResponse,
+    UpdateBillingPlanRequest,
+    BillingCouponResponse,
+    CreateBillingCouponRequest,
+    UpdateBillingCouponRequest,
     UsageMetricsResponse,
     ResetUsageRequest,
     DashboardStatsResponse,
@@ -608,6 +613,116 @@ async def resume_subscription(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to resume subscription"
+        )
+
+
+@router.get("/billing/plan", response_model=BillingPlanAdminResponse)
+@limiter.limit("60/minute")
+async def get_admin_billing_plan(
+    request: Request,
+    admin_id: str = Depends(require_admin)
+):
+    """Get the active billing plan for admin editing."""
+    try:
+        plan = await admin_service.get_billing_plan()
+        return BillingPlanAdminResponse(**plan)
+    except Exception as e:
+        logger.error(f"Failed to get billing plan: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve billing plan"
+        )
+
+
+@router.put("/billing/plan", response_model=BillingPlanAdminResponse)
+@limiter.limit("10/minute")
+async def update_admin_billing_plan(
+    request: Request,
+    plan_request: UpdateBillingPlanRequest,
+    admin_data: tuple = Depends(get_admin_with_ip)
+):
+    """Update the active billing plan used by Razorpay checkout."""
+    admin_id, ip_address = admin_data
+    try:
+        plan = await admin_service.update_billing_plan(
+            admin_id=admin_id,
+            plan_data=plan_request.model_dump(),
+            ip_address=ip_address,
+        )
+        return BillingPlanAdminResponse(**plan)
+    except Exception as e:
+        logger.error(f"Failed to update billing plan: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update billing plan"
+        )
+
+
+@router.get("/billing/coupons", response_model=List[BillingCouponResponse])
+@limiter.limit("60/minute")
+async def get_admin_billing_coupons(
+    request: Request,
+    admin_id: str = Depends(require_admin)
+):
+    """List billing coupons."""
+    try:
+        coupons = await admin_service.get_billing_coupons()
+        return [BillingCouponResponse(**coupon) for coupon in coupons]
+    except Exception as e:
+        logger.error(f"Failed to get billing coupons: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve billing coupons"
+        )
+
+
+@router.post("/billing/coupons", response_model=BillingCouponResponse)
+@limiter.limit("20/minute")
+async def create_admin_billing_coupon(
+    request: Request,
+    coupon_request: CreateBillingCouponRequest,
+    admin_data: tuple = Depends(get_admin_with_ip)
+):
+    """Create a billing coupon."""
+    admin_id, ip_address = admin_data
+    try:
+        coupon = await admin_service.create_billing_coupon(
+            admin_id=admin_id,
+            coupon_data=coupon_request.model_dump(),
+            ip_address=ip_address,
+        )
+        return BillingCouponResponse(**coupon)
+    except Exception as e:
+        logger.error(f"Failed to create billing coupon: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create billing coupon"
+        )
+
+
+@router.patch("/billing/coupons/{coupon_id}", response_model=BillingCouponResponse)
+@limiter.limit("20/minute")
+async def update_admin_billing_coupon(
+    request: Request,
+    coupon_id: str,
+    coupon_request: UpdateBillingCouponRequest,
+    admin_data: tuple = Depends(get_admin_with_ip)
+):
+    """Update a billing coupon."""
+    admin_id, ip_address = admin_data
+    try:
+        coupon = await admin_service.update_billing_coupon(
+            admin_id=admin_id,
+            coupon_id=coupon_id,
+            coupon_data=coupon_request.model_dump(),
+            ip_address=ip_address,
+        )
+        return BillingCouponResponse(**coupon)
+    except Exception as e:
+        logger.error(f"Failed to update billing coupon: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update billing coupon"
         )
 
 

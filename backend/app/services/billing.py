@@ -36,14 +36,87 @@ class BillingService:
 
     def get_plan_metadata(self) -> Dict[str, Any]:
         """Expose the single app plan to the frontend."""
+        plan = self.get_active_plan()
         return {
             "enabled": self.is_configured(),
             "provider": "razorpay",
+            "plan_name": plan["plan_name"],
+            "display_name": plan["display_name"],
+            "price": round(plan["amount_paise"] / 100, 2),
+            "amount_paise": plan["amount_paise"],
+            "currency": plan["currency"],
+            "billing_period_days": plan["billing_period_days"],
+        }
+
+    def get_active_plan(self) -> Dict[str, Any]:
+        """Load editable plan settings, falling back to env defaults."""
+        fallback = {
             "plan_name": settings.RAZORPAY_PLAN_NAME,
             "display_name": settings.RAZORPAY_PLAN_LABEL,
-            "price": round(settings.RAZORPAY_PLAN_AMOUNT_PAISE / 100, 2),
             "amount_paise": settings.RAZORPAY_PLAN_AMOUNT_PAISE,
             "currency": settings.RAZORPAY_CURRENCY,
+            "billing_period_days": 30,
+            "checkout_description": settings.RAZORPAY_CHECKOUT_DESCRIPTION,
+            "is_active": True,
+        }
+
+        try:
+            result = supabase_client.admin.table("billing_plan_settings").select(
+                "*"
+            ).eq("is_active", True).order("updated_at", desc=True).limit(1).execute()
+            if result.data:
+                return {**fallback, **result.data[0]}
+        except Exception as e:
+            logger.warning(f"Using env billing plan fallback: {e}")
+
+        return fallback
+
+    def validate_coupon(
+        self,
+        coupon_code: Optional[str],
+        amount_paise: int,
+    ) -> Dict[str, Any]:
+        """Validate a coupon and calculate the discounted amount."""
+        if not coupon_code:
+            return {
+                "coupon": None,
+                "discount_amount_paise": 0,
+                "final_amount_paise": amount_paise,
+            }
+
+        code = coupon_code.strip().upper()
+        result = supabase_client.admin.table("billing_coupons").select(
+            "*"
+        ).eq("code", code).limit(1).execute()
+
+        if not result.data:
+            raise RuntimeError("Coupon code was not found.")
+
+        coupon = result.data[0]
+        now = utc_now()
+        starts_at = parse_datetime_utc(coupon.get("starts_at"))
+        ends_at = parse_datetime_utc(coupon.get("ends_at"))
+        max_redemptions = coupon.get("max_redemptions")
+
+        if not coupon.get("is_active"):
+            raise RuntimeError("Coupon code is inactive.")
+        if starts_at and starts_at > now:
+            raise RuntimeError("Coupon code is not active yet.")
+        if ends_at and ends_at <= now:
+            raise RuntimeError("Coupon code has expired.")
+        if max_redemptions and coupon.get("redeemed_count", 0) >= max_redemptions:
+            raise RuntimeError("Coupon code has reached its redemption limit.")
+
+        if coupon.get("discount_type") == "percent":
+            discount_amount = int(amount_paise * coupon["discount_value"] / 100)
+        else:
+            discount_amount = int(coupon["discount_value"])
+
+        discount_amount = max(0, min(discount_amount, amount_paise - 100))
+        return {
+            "coupon": coupon,
+            "discount_amount_paise": discount_amount,
+            "final_amount_paise": amount_paise - discount_amount,
         }
 
     def _ensure_configured(self) -> None:
@@ -206,7 +279,8 @@ class BillingService:
     async def create_checkout_order(
         self,
         user_id: str,
-        plan_name: Optional[str] = None
+        plan_name: Optional[str] = None,
+        coupon_code: Optional[str] = None
     ) -> Dict[str, Any]:
         """Create a Razorpay order and persist the pending payment row."""
         self._ensure_configured()
@@ -218,6 +292,8 @@ class BillingService:
         subscription = await self.get_or_create_subscription(user_id)
         plan_metadata = self.get_plan_metadata()
         plan_code = plan_name or plan_metadata["plan_name"]
+        discount = self.validate_coupon(coupon_code, plan_metadata["amount_paise"])
+        final_amount_paise = discount["final_amount_paise"]
         now = utc_now()
         receipt = f"sub_{user_id.replace('-', '')[:16]}_{int(now.timestamp())}"
 
@@ -225,12 +301,13 @@ class BillingService:
             "POST",
             "/orders",
             payload={
-                "amount": plan_metadata["amount_paise"],
+                "amount": final_amount_paise,
                 "currency": plan_metadata["currency"],
                 "receipt": receipt,
                 "notes": {
                     "user_id": user_id,
                     "plan_name": plan_code,
+                    "coupon_code": coupon_code or "",
                 },
             },
         )
@@ -240,12 +317,16 @@ class BillingService:
                 "user_id": user_id,
                 "provider": "razorpay",
                 "plan_name": plan_code,
-                "amount": plan_metadata["price"],
-                "amount_paise": plan_metadata["amount_paise"],
+                "amount": round(final_amount_paise / 100, 2),
+                "amount_paise": final_amount_paise,
+                "original_amount_paise": plan_metadata["amount_paise"],
+                "discount_amount_paise": discount["discount_amount_paise"],
+                "final_amount_paise": final_amount_paise,
                 "currency": plan_metadata["currency"],
                 "status": "created",
                 "receipt": receipt,
                 "razorpay_order_id": order.get("id"),
+                "coupon_code": coupon_code.strip().upper() if coupon_code else None,
                 "notes": order.get("notes") or {},
             }
         ).execute()
@@ -256,7 +337,10 @@ class BillingService:
             "amount": order.get("amount"),
             "currency": order.get("currency"),
             "name": settings.RAZORPAY_COMPANY_NAME,
-            "description": settings.RAZORPAY_CHECKOUT_DESCRIPTION,
+            "description": self.get_active_plan().get("checkout_description")
+            or settings.RAZORPAY_CHECKOUT_DESCRIPTION,
+            "discount_amount_paise": discount["discount_amount_paise"],
+            "original_amount_paise": plan_metadata["amount_paise"],
             "prefill": {
                 "name": user.get("full_name") or "User",
                 "email": user.get("email") or "",
@@ -315,7 +399,8 @@ class BillingService:
         elif current_trial_end and current_trial_end > now:
             renewal_anchor = current_trial_end
 
-        next_renewal = renewal_anchor + timedelta(days=30)
+        plan = self.get_active_plan()
+        next_renewal = renewal_anchor + timedelta(days=plan["billing_period_days"])
 
         subscription_update = {
             "status": "active",
@@ -355,6 +440,16 @@ class BillingService:
         supabase_client.admin.table("billing_payments").update(payment_patch).eq(
             "id", payment_row["id"]
         ).execute()
+
+        coupon_code = payment_row.get("coupon_code")
+        if coupon_code:
+            coupon = supabase_client.admin.table("billing_coupons").select(
+                "redeemed_count"
+            ).eq("code", coupon_code).limit(1).execute()
+            if coupon.data:
+                supabase_client.admin.table("billing_coupons").update(
+                    {"redeemed_count": int(coupon.data[0].get("redeemed_count") or 0) + 1}
+                ).eq("code", coupon_code).execute()
 
         await log_audit_event(
             user_id=user_id,

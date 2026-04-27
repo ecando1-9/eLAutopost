@@ -702,6 +702,123 @@ class AdminService:
         except Exception as e:
             logger.error(f"Failed to resume subscription: {e}")
             raise Exception("Failed to resume subscription")
+
+    # =========================================================================
+    # BILLING PLAN & COUPONS
+    # =========================================================================
+
+    async def get_billing_plan(self) -> Dict[str, Any]:
+        """Return the active editable billing plan."""
+        from ..services.billing import billing_service
+
+        return billing_service.get_active_plan()
+
+    async def update_billing_plan(
+        self,
+        admin_id: str,
+        plan_data: Dict[str, Any],
+        ip_address: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Create or update the active billing plan."""
+        try:
+            payload = {
+                "plan_name": plan_data["plan_name"],
+                "display_name": plan_data["display_name"],
+                "amount_paise": plan_data["amount_paise"],
+                "currency": plan_data["currency"].upper(),
+                "billing_period_days": plan_data["billing_period_days"],
+                "checkout_description": plan_data.get("checkout_description"),
+                "is_active": True,
+            }
+            result = supabase_client.admin.table("billing_plan_settings").upsert(
+                payload,
+                on_conflict="plan_name",
+            ).execute()
+
+            await self.log_admin_action(
+                admin_id=admin_id,
+                action="billing_plan_updated",
+                details=payload,
+                ip_address=ip_address,
+            )
+
+            return result.data[0] if result.data else payload
+        except Exception as e:
+            logger.error(f"Failed to update billing plan: {e}")
+            raise Exception("Failed to update billing plan")
+
+    async def get_billing_coupons(self) -> List[Dict[str, Any]]:
+        """List billing coupons for admin management."""
+        try:
+            result = supabase_client.admin.table("billing_coupons").select(
+                "*"
+            ).order("created_at", desc=True).execute()
+            return result.data or []
+        except Exception as e:
+            logger.error(f"Failed to get billing coupons: {e}")
+            raise Exception("Failed to retrieve billing coupons")
+
+    async def create_billing_coupon(
+        self,
+        admin_id: str,
+        coupon_data: Dict[str, Any],
+        ip_address: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Create a billing coupon."""
+        try:
+            payload = dict(coupon_data)
+            payload["code"] = payload["code"].upper()
+            result = supabase_client.admin.table("billing_coupons").insert(
+                payload
+            ).execute()
+
+            await self.log_admin_action(
+                admin_id=admin_id,
+                action="billing_coupon_created",
+                details={"code": payload["code"]},
+                ip_address=ip_address,
+            )
+
+            return result.data[0] if result.data else payload
+        except Exception as e:
+            logger.error(f"Failed to create billing coupon: {e}")
+            raise Exception("Failed to create billing coupon")
+
+    async def update_billing_coupon(
+        self,
+        admin_id: str,
+        coupon_id: str,
+        coupon_data: Dict[str, Any],
+        ip_address: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Update a billing coupon."""
+        try:
+            payload = {
+                key: value
+                for key, value in coupon_data.items()
+                if value is not None
+            }
+            if not payload:
+                result = supabase_client.admin.table("billing_coupons").select(
+                    "*"
+                ).eq("id", coupon_id).single().execute()
+                return result.data or {}
+
+            result = supabase_client.admin.table("billing_coupons").update(
+                payload
+            ).eq("id", coupon_id).execute()
+
+            await self.log_admin_action(
+                admin_id=admin_id,
+                action="billing_coupon_updated",
+                details={"coupon_id": coupon_id, **payload},
+                ip_address=ip_address,
+            )
+
+            return result.data[0] if result.data else {}
+        except Exception as e:
+            logger.error(f"Failed to update billing coupon: {e}")
+            raise Exception("Failed to update billing coupon")
     
     # =========================================================================
     # USAGE TRACKING

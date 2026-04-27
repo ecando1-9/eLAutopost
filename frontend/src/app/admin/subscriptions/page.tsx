@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { adminService, User } from '@/services/admin';
+import { adminService, BillingCoupon, BillingPlanSettings, User } from '@/services/admin';
 import {
     CreditCard,
     AlertTriangle,
@@ -11,14 +11,26 @@ import {
     PlayCircle,
     ShieldX,
     Loader2,
+    Tag,
+    Save,
 } from 'lucide-react';
 import { format } from 'date-fns';
 
 export default function SubscriptionsPage() {
     const [users, setUsers] = useState<User[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [billingPlan, setBillingPlan] = useState<BillingPlanSettings | null>(null);
+    const [coupons, setCoupons] = useState<BillingCoupon[]>([]);
+    const [couponForm, setCouponForm] = useState({
+        code: '',
+        description: '',
+        discount_type: 'percent' as 'percent' | 'fixed',
+        discount_value: 10,
+        max_redemptions: '',
+    });
     const [statusFilter, setStatusFilter] = useState('active'); // Default to active
     const [actionUserId, setActionUserId] = useState<string | null>(null);
+    const [billingSaving, setBillingSaving] = useState(false);
 
     const fetchSubscriptions = async () => {
         setIsLoading(true);
@@ -37,6 +49,90 @@ export default function SubscriptionsPage() {
     useEffect(() => {
         fetchSubscriptions();
     }, [statusFilter]);
+
+    useEffect(() => {
+        const fetchBillingControls = async () => {
+            try {
+                const [plan, couponList] = await Promise.all([
+                    adminService.getBillingPlan(),
+                    adminService.getBillingCoupons(),
+                ]);
+                setBillingPlan(plan);
+                setCoupons(couponList);
+            } catch (error) {
+                console.error('Failed to fetch billing controls:', error);
+            }
+        };
+
+        fetchBillingControls();
+    }, []);
+
+    const saveBillingPlan = async () => {
+        if (!billingPlan) return;
+        setBillingSaving(true);
+        try {
+            const updated = await adminService.updateBillingPlan({
+                plan_name: billingPlan.plan_name,
+                display_name: billingPlan.display_name,
+                amount_paise: Number(billingPlan.amount_paise),
+                currency: billingPlan.currency,
+                billing_period_days: Number(billingPlan.billing_period_days),
+                checkout_description: billingPlan.checkout_description,
+            });
+            setBillingPlan(updated);
+        } catch (error) {
+            console.error('Failed to save billing plan:', error);
+            alert('Failed to save billing plan.');
+        } finally {
+            setBillingSaving(false);
+        }
+    };
+
+    const createCoupon = async () => {
+        if (!couponForm.code.trim()) {
+            alert('Enter a coupon code.');
+            return;
+        }
+        setBillingSaving(true);
+        try {
+            const created = await adminService.createBillingCoupon({
+                code: couponForm.code,
+                description: couponForm.description || undefined,
+                discount_type: couponForm.discount_type,
+                discount_value: Number(couponForm.discount_value),
+                max_redemptions: couponForm.max_redemptions ? Number(couponForm.max_redemptions) : undefined,
+                is_active: true,
+            });
+            setCoupons((current) => [created, ...current]);
+            setCouponForm({
+                code: '',
+                description: '',
+                discount_type: 'percent',
+                discount_value: 10,
+                max_redemptions: '',
+            });
+        } catch (error) {
+            console.error('Failed to create coupon:', error);
+            alert('Failed to create coupon.');
+        } finally {
+            setBillingSaving(false);
+        }
+    };
+
+    const toggleCoupon = async (coupon: BillingCoupon) => {
+        setBillingSaving(true);
+        try {
+            const updated = await adminService.updateBillingCoupon(coupon.id, {
+                is_active: !coupon.is_active,
+            });
+            setCoupons((current) => current.map((item) => item.id === coupon.id ? updated : item));
+        } catch (error) {
+            console.error('Failed to update coupon:', error);
+            alert('Failed to update coupon.');
+        } finally {
+            setBillingSaving(false);
+        }
+    };
 
     const runAction = async (
         userId: string,
@@ -123,6 +219,141 @@ export default function SubscriptionsPage() {
                             {status}
                         </button>
                     ))}
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h3 className="text-lg font-semibold text-gray-900">Plan Pricing</h3>
+                            <p className="text-sm text-gray-500">Change the checkout plan shown to users</p>
+                        </div>
+                        <CreditCard className="h-5 w-5 text-blue-500" />
+                    </div>
+                    {billingPlan && (
+                        <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <label className="text-sm font-medium text-gray-700">
+                                Plan name
+                                <input
+                                    value={billingPlan.display_name}
+                                    onChange={(event) => setBillingPlan({ ...billingPlan, display_name: event.target.value })}
+                                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                                />
+                            </label>
+                            <label className="text-sm font-medium text-gray-700">
+                                Price
+                                <input
+                                    type="number"
+                                    value={billingPlan.amount_paise / 100}
+                                    onChange={(event) => setBillingPlan({ ...billingPlan, amount_paise: Math.round(Number(event.target.value) * 100) })}
+                                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                                />
+                            </label>
+                            <label className="text-sm font-medium text-gray-700">
+                                Currency
+                                <input
+                                    value={billingPlan.currency}
+                                    onChange={(event) => setBillingPlan({ ...billingPlan, currency: event.target.value.toUpperCase() })}
+                                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                                />
+                            </label>
+                            <label className="text-sm font-medium text-gray-700">
+                                Access days
+                                <input
+                                    type="number"
+                                    value={billingPlan.billing_period_days}
+                                    onChange={(event) => setBillingPlan({ ...billingPlan, billing_period_days: Number(event.target.value) })}
+                                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                                />
+                            </label>
+                            <label className="sm:col-span-2 text-sm font-medium text-gray-700">
+                                Checkout description
+                                <input
+                                    value={billingPlan.checkout_description || ''}
+                                    onChange={(event) => setBillingPlan({ ...billingPlan, checkout_description: event.target.value })}
+                                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                                />
+                            </label>
+                            <div className="sm:col-span-2">
+                                <button
+                                    type="button"
+                                    onClick={saveBillingPlan}
+                                    disabled={billingSaving}
+                                    className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                                >
+                                    {billingSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                                    Save Plan
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h3 className="text-lg font-semibold text-gray-900">Coupons</h3>
+                            <p className="text-sm text-gray-500">Create discount codes users can apply at checkout</p>
+                        </div>
+                        <Tag className="h-5 w-5 text-emerald-500" />
+                    </div>
+                    <div className="mt-5 grid grid-cols-1 sm:grid-cols-5 gap-3">
+                        <input
+                            placeholder="CODE"
+                            value={couponForm.code}
+                            onChange={(event) => setCouponForm({ ...couponForm, code: event.target.value.toUpperCase() })}
+                            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                        />
+                        <select
+                            value={couponForm.discount_type}
+                            onChange={(event) => setCouponForm({ ...couponForm, discount_type: event.target.value as 'percent' | 'fixed' })}
+                            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                        >
+                            <option value="percent">Percent</option>
+                            <option value="fixed">Fixed paise</option>
+                        </select>
+                        <input
+                            type="number"
+                            value={couponForm.discount_value}
+                            onChange={(event) => setCouponForm({ ...couponForm, discount_value: Number(event.target.value) })}
+                            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                        />
+                        <input
+                            placeholder="Max uses"
+                            value={couponForm.max_redemptions}
+                            onChange={(event) => setCouponForm({ ...couponForm, max_redemptions: event.target.value })}
+                            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                        />
+                        <button
+                            type="button"
+                            onClick={createCoupon}
+                            disabled={billingSaving}
+                            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                        >
+                            Add
+                        </button>
+                    </div>
+                    <div className="mt-5 space-y-2">
+                        {coupons.slice(0, 5).map((coupon) => (
+                            <div key={coupon.id} className="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2">
+                                <div>
+                                    <p className="text-sm font-semibold text-gray-900">{coupon.code}</p>
+                                    <p className="text-xs text-gray-500">
+                                        {coupon.discount_type === 'percent' ? `${coupon.discount_value}% off` : `INR ${(coupon.discount_value / 100).toFixed(2)} off`}
+                                        {' '}· {coupon.redeemed_count}{coupon.max_redemptions ? `/${coupon.max_redemptions}` : ''} used
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => toggleCoupon(coupon)}
+                                    className={`rounded-md px-2.5 py-1 text-xs font-semibold ${coupon.is_active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-600'}`}
+                                >
+                                    {coupon.is_active ? 'Active' : 'Off'}
+                                </button>
+                            </div>
+                        ))}
+                    </div>
                 </div>
             </div>
 
