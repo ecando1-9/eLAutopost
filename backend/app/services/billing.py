@@ -416,6 +416,60 @@ class BillingService:
             return result.data[0]
         return None
 
+    async def _recover_payment_record(
+        self,
+        *,
+        order_id: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Rebuild a missing local payment row from Razorpay order metadata."""
+        try:
+            order = self._request("GET", f"/orders/{order_id}")
+        except Exception as e:
+            logger.warning(f"Unable to recover missing payment row for {order_id}: {e}")
+            return None
+
+        notes = order.get("notes") or {}
+        owner_user_id = notes.get("user_id")
+        if not owner_user_id:
+            logger.warning(
+                f"Razorpay order {order_id} is missing user_id in notes; cannot recover payment row."
+            )
+            return None
+
+        existing = await self._find_payment_record(order_id=order_id)
+        if existing:
+            return existing
+
+        plan_name = notes.get("plan_name")
+        plan = self.get_plan_by_name(plan_name) or self.get_active_plan()
+        final_amount_paise = int(order.get("amount") or plan["amount_paise"])
+        original_amount_paise = int(plan.get("amount_paise") or final_amount_paise)
+        recovered_payload = {
+            "user_id": owner_user_id,
+            "provider": "razorpay",
+            "plan_name": plan.get("plan_name"),
+            "amount": round(final_amount_paise / 100, 2),
+            "amount_paise": final_amount_paise,
+            "original_amount_paise": original_amount_paise,
+            "discount_amount_paise": max(original_amount_paise - final_amount_paise, 0),
+            "final_amount_paise": final_amount_paise,
+            "currency": order.get("currency") or plan.get("currency") or settings.RAZORPAY_CURRENCY,
+            "status": "created",
+            "receipt": order.get("receipt"),
+            "razorpay_order_id": order.get("id"),
+            "coupon_code": (notes.get("coupon_code") or "").strip().upper() or None,
+            "notes": notes,
+        }
+        result = supabase_client.admin.table("billing_payments").insert(
+            recovered_payload
+        ).execute()
+        if result.data:
+            logger.warning(
+                f"Recovered missing billing_payments row for Razorpay order {order_id} and user {owner_user_id}."
+            )
+            return result.data[0]
+        return await self._find_payment_record(order_id=order_id)
+
     async def _apply_successful_payment(
         self,
         user_id: str,
@@ -525,12 +579,19 @@ class BillingService:
             payment_id=payment_id,
         )
 
+        if not payment_row and user_id:
+            payment_row = await self._find_payment_record(
+                order_id=order_id,
+                payment_id=payment_id,
+            )
+
+        if not payment_row:
+            payment_row = await self._recover_payment_record(order_id=order_id)
+
         if not payment_row:
             raise RuntimeError("We could not match this payment to your account.")
 
         resolved_user_id = payment_row.get("user_id")
-        if user_id and resolved_user_id and resolved_user_id != user_id:
-            raise RuntimeError("This payment does not belong to the signed-in user.")
 
         if not trust_gateway_signature:
             if not checkout_signature:
@@ -543,6 +604,15 @@ class BillingService:
                     }
                 ).eq("id", payment_row["id"]).execute()
                 raise RuntimeError("Razorpay signature verification failed.")
+
+        if user_id and resolved_user_id and resolved_user_id != user_id:
+            logger.warning(
+                "Billing verification session mismatch for order %s: signed-in user=%s, order owner=%s. "
+                "Proceeding with the order owner after gateway verification.",
+                order_id,
+                user_id,
+                resolved_user_id,
+            )
 
         payment_details = self._request("GET", f"/payments/{payment_id}")
         if payment_details.get("order_id") != order_id:
