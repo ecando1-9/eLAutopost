@@ -178,7 +178,7 @@ class BillingPlanAdminResponse(BaseModel):
 
 class UpdateBillingPlanRequest(BaseModel):
     """Request to update the active billing plan."""
-    plan_name: str = Field(default="monthly", max_length=50)
+    plan_name: str = Field(default="pro", max_length=50)
     display_name: str = Field(..., min_length=2, max_length=100)
     amount_paise: int = Field(..., ge=100)
     currency: str = Field(default="INR", min_length=3, max_length=3)

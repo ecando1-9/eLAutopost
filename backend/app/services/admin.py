@@ -711,6 +711,10 @@ class AdminService:
         """Return the active editable billing plan."""
         from ..services.billing import billing_service
 
+        plans = billing_service.get_active_plans()
+        plan_names = {str(item.get("plan_name") or "").strip().lower() for item in plans}
+        if "pro" in plan_names:
+            return billing_service.get_plan_by_name("pro") or billing_service.get_active_plan()
         return billing_service.get_active_plan()
 
     async def update_billing_plan(
@@ -721,8 +725,18 @@ class AdminService:
     ) -> Dict[str, Any]:
         """Create or update the active billing plan."""
         try:
+            from ..services.billing import billing_service
+
+            requested_plan_name = str(plan_data["plan_name"]).strip().lower()
+            active_plan_names = {
+                str(item.get("plan_name") or "").strip().lower()
+                for item in billing_service.get_active_plans()
+            }
+            if requested_plan_name == "monthly" and "starter" in active_plan_names and "pro" in active_plan_names:
+                requested_plan_name = "pro"
+
             payload = {
-                "plan_name": plan_data["plan_name"],
+                "plan_name": requested_plan_name,
                 "display_name": plan_data["display_name"],
                 "amount_paise": plan_data["amount_paise"],
                 "currency": plan_data["currency"].upper(),
