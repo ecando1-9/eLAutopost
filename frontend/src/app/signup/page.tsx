@@ -14,6 +14,11 @@ import {
     resendConfirmationEmail,
     shouldOfferConfirmationResend,
 } from '@/lib/auth-email';
+import {
+    PASSWORD_RULES,
+    validateEmailAddress,
+    validateSignupPassword,
+} from '@/lib/auth-validation';
 
 export default function SignupPage() {
     const router = useRouter();
@@ -36,6 +41,17 @@ export default function SignupPage() {
         setPendingVerificationEmail(null);
 
         const signupEmail = normalizeEmail(email);
+        const emailError = validateEmailAddress(signupEmail);
+        const passwordError = validateSignupPassword(password);
+        const nameError = fullName.trim().length < 2
+            ? 'Full name must be at least 2 characters.'
+            : null;
+
+        if (emailError || passwordError || nameError) {
+            setError(emailError || passwordError || nameError);
+            setLoading(false);
+            return;
+        }
 
         try {
             const { error: signUpError, data } = await supabase.auth.signUp({
@@ -112,6 +128,29 @@ export default function SignupPage() {
             setOauthLoading(null);
         }
     };
+
+    const passwordRules = [
+        {
+            label: `At least ${PASSWORD_RULES.minLength} characters`,
+            met: password.length >= PASSWORD_RULES.minLength,
+        },
+        {
+            label: `Maximum ${PASSWORD_RULES.maxLength} characters`,
+            met: password.length > 0 && password.length <= PASSWORD_RULES.maxLength,
+        },
+        {
+            label: 'Uppercase and lowercase letters',
+            met: PASSWORD_RULES.uppercase.test(password) && PASSWORD_RULES.lowercase.test(password),
+        },
+        {
+            label: 'One number',
+            met: PASSWORD_RULES.number.test(password),
+        },
+        {
+            label: 'One special character',
+            met: PASSWORD_RULES.special.test(password),
+        },
+    ];
 
     return (
         <div className="min-h-screen bg-[#F8FAFC] flex font-sans text-slate-900 selection:bg-blue-100 relative">
@@ -248,6 +287,7 @@ export default function SignupPage() {
                                         autoComplete="email"
                                         placeholder="Email address"
                                         required
+                                        maxLength={254}
                                         value={email}
                                         onChange={(e) => setEmail(e.target.value)}
                                         className="block w-full h-11 appearance-none rounded-xl border border-slate-200 bg-slate-50 px-4 placeholder-slate-400 text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 sm:text-sm transition-all"
@@ -262,10 +302,19 @@ export default function SignupPage() {
                                         autoComplete="new-password"
                                         placeholder="Password"
                                         required
+                                        minLength={PASSWORD_RULES.minLength}
+                                        maxLength={PASSWORD_RULES.maxLength}
                                         value={password}
                                         onChange={(e) => setPassword(e.target.value)}
                                         className="block w-full h-11 appearance-none rounded-xl border border-slate-200 bg-slate-50 px-4 placeholder-slate-400 text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 sm:text-sm transition-all"
                                     />
+                                    <div className="mt-2 grid grid-cols-1 gap-1 text-xs text-slate-500">
+                                        {passwordRules.map((rule) => (
+                                            <span key={rule.label} className={rule.met ? 'text-emerald-600' : 'text-slate-500'}>
+                                                {rule.label}
+                                            </span>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
 
@@ -307,7 +356,7 @@ export default function SignupPage() {
 
                     <ul className="space-y-6">
                         {[
-                            '7-Day Zero Commitment Trial',
+                            '30-Day Free Trial',
                             'AI Strategy Coach Included',
                             'Spam-Protected Safe Infrastructure'
                         ].map((item, i) => (

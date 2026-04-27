@@ -2,318 +2,355 @@
 
 import { motion } from 'framer-motion';
 import Link from 'next/link';
-import { 
-    ArrowRight, 
-    Sparkles, 
-    Zap, 
-    CheckCircle2, 
-    Globe,
-    Linkedin,
-    Instagram,
-    LineChart,
+import {
+    ArrowRight,
     Calendar,
-    PenTool
+    CheckCircle2,
+    FileText,
+    Gauge,
+    Instagram,
+    Linkedin,
+    LockKeyhole,
+    PenTool,
+    ShieldCheck,
+    Sparkles,
+    Timer,
+    Zap,
 } from 'lucide-react';
-import Image from 'next/image';
+
+const features = [
+    {
+        icon: Sparkles,
+        title: 'AI Strategy Engine',
+        description: 'Choose your goal, audience, and tone. eLAutopost turns that into hooks, captions, and content angles built for LinkedIn growth.',
+    },
+    {
+        icon: Calendar,
+        title: '30-Day Content Calendar',
+        description: 'Plan a full month of topics across authority, education, proof, and engagement so you always know what to publish next.',
+    },
+    {
+        icon: Timer,
+        title: 'Smart Auto-Post Scheduler',
+        description: 'Schedule approved posts safely with controlled publishing windows and clear upcoming-post visibility.',
+    },
+    {
+        icon: FileText,
+        title: 'Premium PDF Carousels',
+        description: 'Convert insights into polished multi-page PDF carousel content without opening a separate design tool.',
+    },
+    {
+        icon: Gauge,
+        title: 'Engagement Scoring',
+        description: 'Review content quality signals before publishing so posts are easier to scan, understand, and act on.',
+    },
+    {
+        icon: ShieldCheck,
+        title: 'Security-First Workflow',
+        description: 'Email verification, strong passwords, rate limits, secure headers, and admin-only controls protect the account flow.',
+    },
+];
+
+const plans = [
+    {
+        name: 'Starter',
+        subtitle: 'Perfect for dipping your toes in',
+        price: '₹99',
+        cta: 'Go with Starter',
+        href: '/signup',
+        featured: false,
+        features: [
+            '1 Post Per Day Limit',
+            'Basic Content Generation',
+            'Manual Publishing',
+            'Standard Email Support',
+        ],
+    },
+    {
+        name: 'Pro Growth Engine',
+        subtitle: 'The complete suite for brand growth',
+        price: '₹299',
+        cta: 'Start 30-Day Free Trial',
+        href: '/signup',
+        featured: true,
+        features: [
+            'Full AI Strategy Engine',
+            'Smart Auto-Post Scheduler',
+            'Premium PDF Carousels',
+            '30-Day Content Calendar',
+            'Engagement Scoring',
+        ],
+    },
+];
+
+const securityItems = [
+    'Verified email before first password login',
+    'Strong password rules with min/max length',
+    'Rate limits for login, admin, billing, and API routes',
+    'Security headers, same-origin API checks, and admin route protection',
+];
+
+const faqs = [
+    {
+        question: 'Is there a free trial?',
+        answer: 'Yes. Every new user gets a 30-day free trial to explore the premium workflow before choosing a paid plan.',
+    },
+    {
+        question: 'What is the difference between Starter and Pro?',
+        answer: 'Starter is for simple daily manual posting. Pro unlocks the full growth engine, auto-scheduling, carousels, calendar planning, and engagement scoring.',
+    },
+    {
+        question: 'Are my accounts safe from bans?',
+        answer: 'The app is designed around controlled publishing, clear review steps, and safe API usage patterns instead of spam-style automation.',
+    },
+];
 
 export default function LandingPage() {
-    const features = [
-        {
-            icon: <Zap className="h-6 w-6 text-blue-600" />,
-            title: "AI Strategy Engine",
-            description: "We don't just generate text. Tell us your goal (Reach, Sales, Authority), and our engine writes engaging hooks and predicts optimal strategies."
-        },
-        {
-            icon: <PenTool className="h-6 w-6 text-indigo-600" />,
-            title: "Automated Carousels",
-            description: "Instantly convert your text insights into beautifully designed, multi-page PDF carousels without opening any external design software."
-        },
-        {
-            icon: <Calendar className="h-6 w-6 text-violet-600" />,
-            title: "30-Day Content Planner",
-            description: "Say goodbye to writer's block. Generate a full month of strategic topics categorized for maximum audience growth and interaction."
-        }
-    ];
-
-    const faqs = [
-        {
-            question: "Is there a free trial?",
-            answer: "Yes! Every new user gets a full free trial with premium access to experience our tools."
-        },
-        {
-            question: "What is the difference between Starter and Pro?",
-            answer: "Starter (₹99) is for simple, manual daily posting. Pro (₹299) unlocks the full Growth Engine, engagement scoring, and auto-scheduling."
-        },
-        {
-            question: "Are my accounts safe from bans?",
-            answer: "Absolutely. We enforce strict human-like API dispatching (8-hour delays) to ensure your account is never flagged for spam."
-        }
-    ];
-
     return (
-        <div className="min-h-screen bg-[#F8FAFC] text-slate-900 font-sans selection:bg-blue-100">
-            {/* Gradient Header */}
-            <div className="absolute top-0 inset-x-0 h-96 bg-gradient-to-b from-blue-50 to-transparent -z-10" />
-
-            {/* Navigation */}
-            <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-200 shadow-sm">
-                <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                        <img 
-                            src="/eLautopost_logo.png" 
-                            alt="eLAutopost AI Logo" 
-                            className="h-10 w-auto object-contain"
+        <div className="min-h-screen bg-slate-50 text-slate-950">
+            <nav className="sticky top-0 z-50 border-b border-slate-200 bg-white/90 backdrop-blur">
+                <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
+                    <Link href="/" className="flex items-center gap-3">
+                        <img
+                            src="/eLautopost_logo.png"
+                            alt="eLAutopost AI Logo"
+                            className="h-10 w-10 rounded-lg object-contain"
                         />
-                        <span className="text-xl font-bold tracking-tight text-slate-900 hidden sm:inline-block">eLAutopost AI</span>
+                        <span className="hidden text-lg font-bold tracking-tight text-slate-950 sm:inline">eLAutopost AI</span>
+                    </Link>
+
+                    <div className="hidden items-center gap-7 text-sm font-semibold text-slate-600 md:flex">
+                        <a href="#features" className="hover:text-sky-700">Features</a>
+                        <a href="#pricing" className="hover:text-sky-700">Pricing</a>
+                        <a href="#security" className="hover:text-sky-700">Security</a>
+                        <a href="#faq" className="hover:text-sky-700">FAQ</a>
                     </div>
 
-                    <div className="hidden md:flex items-center space-x-8 text-sm font-medium text-slate-600">
-                        <a href="#features" className="hover:text-blue-600 transition-colors">Features</a>
-                        <a href="#pricing" className="hover:text-blue-600 transition-colors">Pricing</a>
-                        <a href="#faq" className="hover:text-blue-600 transition-colors">FAQ</a>
-                    </div>
-
-                    <div className="flex items-center space-x-4">
-                        <Link href="/login" className="text-sm font-semibold text-slate-600 hover:text-blue-600 transition-colors">
+                    <div className="flex items-center gap-3">
+                        <Link href="/login" className="text-sm font-semibold text-slate-600 hover:text-sky-700">
                             Log in
                         </Link>
-                        <Link href="/signup" className="h-10 px-5 bg-blue-600 text-white hover:bg-blue-700 rounded-lg text-sm font-semibold flex items-center transition-all shadow-md shadow-blue-600/20 hover:shadow-lg">
+                        <Link href="/signup" className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-sky-700">
                             Start Free Trial
                         </Link>
                     </div>
                 </div>
             </nav>
 
-            {/* Hero Section */}
-            <section className="relative pt-24 pb-20 px-6 text-center">
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.8 }}
-                    className="max-w-4xl mx-auto space-y-8"
-                >
-                    <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-100 text-blue-700 text-sm font-semibold shadow-sm">
-                        <Sparkles className="h-4 w-4" />
-                        <span>The Ultimate Growth Operating System</span>
-                    </div>
+            <section className="relative overflow-hidden border-b border-slate-200 bg-white">
+                <div className="mx-auto grid max-w-7xl items-center gap-12 px-4 py-20 sm:px-6 lg:grid-cols-[1.05fr_0.95fr] lg:py-24">
+                    <motion.div
+                        initial={{ opacity: 0, y: 18 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.6 }}
+                        className="max-w-3xl"
+                    >
+                        <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-sm font-semibold text-sky-800">
+                            <Zap className="h-4 w-4" />
+                            30-day free trial for new users
+                        </div>
+                        <h1 className="mt-6 text-5xl font-extrabold tracking-tight text-slate-950 sm:text-6xl">
+                            Scale your LinkedIn reach without busywork.
+                        </h1>
+                        <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-600">
+                            eLAutopost AI helps professionals and growing brands plan, write, score, schedule, and publish LinkedIn content from one focused workspace.
+                        </p>
+                        <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                            <Link href="/signup" className="inline-flex h-12 items-center justify-center rounded-xl bg-sky-600 px-6 text-sm font-bold text-white shadow-lg shadow-sky-600/20 hover:bg-sky-700">
+                                Create Account
+                                <ArrowRight className="ml-2 h-4 w-4" />
+                            </Link>
+                            <a href="#pricing" className="inline-flex h-12 items-center justify-center rounded-xl border border-slate-300 bg-white px-6 text-sm font-bold text-slate-800 hover:bg-slate-50">
+                                View Pricing
+                            </a>
+                        </div>
+                    </motion.div>
 
-                    <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight text-slate-900 leading-[1.15]">
-                        Scale your reach. <br />
-                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">
-                            Zero busywork.
-                        </span>
-                    </h1>
-
-                    <p className="text-lg md:text-xl text-slate-600 max-w-2xl mx-auto leading-relaxed">
-                        eLAutopost AI plans, writes, and schedules high-engagement LinkedIn content for busy professionals and growing brands.
-                    </p>
-
-                    <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
-                        <Link href="/signup" className="w-full sm:w-auto h-14 px-8 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold flex items-center justify-center transition-all shadow-lg shadow-blue-600/30">
-                            Get Started Free
-                            <ArrowRight className="ml-2 h-5 w-5" />
-                        </Link>
-                        <a href="#pricing" className="w-full sm:w-auto h-14 px-8 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 rounded-xl font-semibold flex items-center justify-center transition-all shadow-sm">
-                            View Pricing
-                        </a>
-                    </div>
-                </motion.div>
-            </section>
-
-            {/* Features Section */}
-            <section id="features" className="py-24 px-6 bg-white border-y border-slate-200">
-                <div className="max-w-7xl mx-auto">
-                    <div className="text-center space-y-4 mb-16">
-                        <h2 className="text-3xl md:text-4xl font-bold text-slate-900">Crafted for serious growth.</h2>
-                        <p className="text-slate-600 max-w-xl mx-auto text-lg">Powerful tools built into a seamless, elegant workflow.</p>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                        {features.map((feature, idx) => (
-                            <div key={idx} className="bg-slate-50 border border-slate-100 rounded-2xl p-8 hover:shadow-lg transition-all hover:-translate-y-1">
-                                <div className="h-12 w-12 bg-white rounded-xl shadow-sm border border-slate-100 flex items-center justify-center mb-6">
-                                    {feature.icon}
+                    <div className="rounded-2xl border border-slate-200 bg-slate-950 p-5 shadow-2xl">
+                        <div className="rounded-xl bg-white p-5">
+                            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                                <div className="flex items-center gap-3">
+                                    <img src="/eLautopost_logo.png" alt="eLAutopost AI" className="h-9 w-9 rounded-lg object-contain" />
+                                    <div>
+                                        <p className="text-sm font-bold text-slate-950">Growth Workspace</p>
+                                        <p className="text-xs text-slate-500">Plan · Write · Schedule</p>
+                                    </div>
                                 </div>
-                                <h3 className="text-xl font-bold text-slate-900 mb-3">{feature.title}</h3>
-                                <p className="text-slate-600 leading-relaxed">{feature.description}</p>
+                                <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">Ready</span>
                             </div>
-                        ))}
+                            <div className="mt-5 space-y-3">
+                                {[
+                                    ['AI Hook', 'Your next client is already reading LinkedIn.'],
+                                    ['Calendar', '30 strategic topics prepared'],
+                                    ['Carousel', 'PDF draft ready for review'],
+                                    ['Scheduler', 'Next post queued safely'],
+                                ].map(([label, value]) => (
+                                    <div key={label} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                                        <p className="text-xs font-bold uppercase tracking-wide text-sky-700">{label}</p>
+                                        <p className="mt-1 text-sm font-semibold text-slate-800">{value}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
                     </div>
                 </div>
             </section>
 
-            {/* Pricing Section - 99 vs 299 Anchoring */}
-            <section id="pricing" className="py-24 px-6 relative bg-slate-50">
-                <div className="max-w-5xl mx-auto">
-                    <div className="text-center space-y-4 mb-16">
-                        <h2 className="text-3xl md:text-4xl font-bold text-slate-900">Transparent Pricing.</h2>
-                        <p className="text-slate-600 max-w-xl mx-auto text-lg">Start small, upgrade when you need the full power.</p>
+            <section id="features" className="bg-slate-50 px-4 py-20 sm:px-6">
+                <div className="mx-auto max-w-7xl">
+                    <div className="max-w-2xl">
+                        <p className="text-sm font-bold uppercase tracking-[0.18em] text-sky-700">Features</p>
+                        <h2 className="mt-3 text-3xl font-bold text-slate-950 sm:text-4xl">A clear workflow for serious LinkedIn growth.</h2>
+                        <p className="mt-4 text-slate-600">Everything is built so users understand what to create, why it matters, and when it will publish.</p>
+                    </div>
+                    <div className="mt-10 grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
+                        {features.map((feature) => {
+                            const Icon = feature.icon;
+                            return (
+                                <div key={feature.title} className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                                    <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-sky-50 text-sky-700">
+                                        <Icon className="h-5 w-5" />
+                                    </div>
+                                    <h3 className="mt-5 text-lg font-bold text-slate-950">{feature.title}</h3>
+                                    <p className="mt-3 text-sm leading-6 text-slate-600">{feature.description}</p>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            </section>
+
+            <section id="pricing" className="border-y border-slate-200 bg-white px-4 py-20 sm:px-6">
+                <div className="mx-auto max-w-5xl">
+                    <div className="text-center">
+                        <p className="text-sm font-bold uppercase tracking-[0.18em] text-sky-700">Pricing</p>
+                        <h2 className="mt-3 text-3xl font-bold text-slate-950 sm:text-4xl">Start small, upgrade when growth needs more power.</h2>
                     </div>
 
-                    <div className="grid md:grid-cols-2 gap-8 items-center max-w-4xl mx-auto">
-                        
-                        {/* Starter Plan */}
-                        <div className="bg-white rounded-3xl border border-slate-200 p-10 shadow-sm">
-                            <div className="space-y-6">
-                                <div>
-                                    <h3 className="text-2xl font-bold text-slate-900">Starter</h3>
-                                    <p className="text-slate-500 mt-2">Perfect for dipping your toes in</p>
+                    <div className="mt-10 grid grid-cols-1 gap-6 lg:grid-cols-2">
+                        {plans.map((plan) => (
+                            <div
+                                key={plan.name}
+                                className={`relative rounded-2xl border p-7 shadow-sm ${plan.featured ? 'border-sky-300 bg-sky-50' : 'border-slate-200 bg-white'}`}
+                            >
+                                {plan.featured && (
+                                    <span className="absolute right-5 top-5 rounded-full bg-sky-600 px-3 py-1 text-xs font-bold text-white">
+                                        Most Popular
+                                    </span>
+                                )}
+                                <h3 className="text-2xl font-bold text-slate-950">{plan.name}</h3>
+                                <p className="mt-2 text-sm text-slate-600">{plan.subtitle}</p>
+                                <div className="mt-6 flex items-end gap-2">
+                                    <span className="text-5xl font-extrabold text-slate-950">{plan.price}</span>
+                                    <span className="pb-2 text-sm font-semibold text-slate-500">/month</span>
                                 </div>
-                                <div className="flex items-baseline text-slate-900">
-                                    <span className="text-5xl font-extrabold">₹99</span>
-                                    <span className="text-slate-500 ml-2 font-medium">/month</span>
-                                </div>
-                                <ul className="space-y-4 pt-6 mt-6 border-t border-slate-100">
-                                    {['1 Post Per Day Limit', 'Basic Content Generation', 'Manual Publishing', 'Standard Email Support'].map(item => (
-                                        <li key={item} className="flex items-center space-x-3 text-slate-700 font-medium">
-                                            <CheckCircle2 className="h-5 w-5 text-blue-600 shrink-0" />
-                                            <span>{item}</span>
+                                <ul className="mt-7 space-y-3 border-t border-slate-200 pt-6">
+                                    {plan.features.map((item) => (
+                                        <li key={item} className="flex items-start gap-3 text-sm font-medium text-slate-700">
+                                            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                                            {item}
                                         </li>
                                     ))}
                                 </ul>
-                                <Link href="/signup" className="block w-full py-4 bg-slate-100 hover:bg-slate-200 text-slate-900 rounded-xl font-bold text-center transition-colors mt-8">
-                                    Go with Starter
+                                <Link
+                                    href={plan.href}
+                                    className={`mt-7 inline-flex w-full items-center justify-center rounded-xl px-5 py-3 text-sm font-bold ${plan.featured ? 'bg-sky-600 text-white hover:bg-sky-700' : 'border border-slate-300 bg-white text-slate-800 hover:bg-slate-50'}`}
+                                >
+                                    {plan.cta}
                                 </Link>
-                            </div>
-                        </div>
-
-                        {/* Pro Plan */}
-                        <div className="bg-blue-600 rounded-3xl p-1 shadow-2xl shadow-blue-600/20 transform md:scale-105 z-10 relative">
-                            <div className="bg-gradient-to-br from-slate-900 to-indigo-950 rounded-[23px] p-10 relative overflow-hidden h-full">
-                                <div className="absolute top-0 right-8 bg-blue-500 text-white text-xs font-bold px-4 py-1.5 rounded-b-lg tracking-wider uppercase">
-                                    Most Popular
-                                </div>
-                                <div className="space-y-6">
-                                    <div>
-                                        <h3 className="text-2xl font-bold text-white">Pro Growth Engine</h3>
-                                        <p className="text-blue-200 mt-2">The complete suite for brand growth</p>
-                                    </div>
-                                    <div className="flex items-baseline text-white">
-                                        <span className="text-5xl font-extrabold">₹299</span>
-                                        <span className="text-blue-200 ml-2 font-medium">/month</span>
-                                    </div>
-                                    <ul className="space-y-4 pt-6 mt-6 border-t border-white/10">
-                                        {[
-                                            'Full AI Strategy Engine',
-                                            'Smart Auto-Post Scheduler',
-                                            'Premium PDF Carousels',
-                                            '30-Day Content Calendar',
-                                            'Engagement Scoring'
-                                        ].map(item => (
-                                            <li key={item} className="flex items-center space-x-3 text-white font-medium">
-                                                <CheckCircle2 className="h-5 w-5 text-blue-400 shrink-0" />
-                                                <span>{item}</span>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                    <Link href="/signup" className="block w-full py-4 bg-white hover:bg-blue-50 text-blue-900 rounded-xl font-bold text-center transition-colors mt-8 shadow-md">
-                                        Start Free Trial
-                                    </Link>
-                                </div>
-                            </div>
-                        </div>
-
-                    </div>
-                </div>
-            </section>
-
-             {/* FAQ Section */}
-             <section id="faq" className="py-24 px-6 relative bg-white border-t border-slate-200">
-                <div className="max-w-3xl mx-auto">
-                    <div className="text-center space-y-4 mb-16">
-                        <h2 className="text-3xl font-bold text-slate-900">Questions?</h2>
-                    </div>
-
-                    <div className="space-y-4">
-                        {faqs.map((faq, i) => (
-                            <div key={i} className="bg-slate-50 border border-slate-100 p-6 rounded-2xl hover:border-slate-300 transition-colors">
-                                <h3 className="text-lg font-bold text-slate-900 mb-2">{faq.question}</h3>
-                                <p className="text-slate-600 leading-relaxed">{faq.answer}</p>
                             </div>
                         ))}
                     </div>
                 </div>
             </section>
 
-            {/* Premium Footer */}
-            <footer className="bg-slate-900 border-t border-slate-800 pt-16 pb-8">
-                <div className="max-w-7xl mx-auto px-6">
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-12 mb-12">
-                        <div className="col-span-1 md:col-span-2">
-                            <div className="flex items-center space-x-2 text-white mb-6">
-                                <img 
-                                    src="/eLautopost_logo.png" 
-                                    alt="eLAutopost AI Logo" 
-                                    className="h-10 w-auto object-contain brightness-0 invert"
-                                />
-                                <span className="font-bold text-xl tracking-tight hidden sm:inline-block">eLAutopost AI</span>
+            <section id="security" className="bg-slate-50 px-4 py-20 sm:px-6">
+                <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[0.85fr_1.15fr]">
+                    <div>
+                        <p className="text-sm font-bold uppercase tracking-[0.18em] text-sky-700">Security</p>
+                        <h2 className="mt-3 text-3xl font-bold text-slate-950">Built with OWASP-style account safety in mind.</h2>
+                        <p className="mt-4 text-slate-600">The application protects account creation, login, admin actions, and API requests with practical layered controls.</p>
+                    </div>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        {securityItems.map((item) => (
+                            <div key={item} className="flex gap-3 rounded-xl border border-slate-200 bg-white p-5">
+                                <LockKeyhole className="mt-0.5 h-5 w-5 shrink-0 text-sky-700" />
+                                <p className="text-sm font-semibold leading-6 text-slate-700">{item}</p>
                             </div>
-                            <p className="text-slate-400 max-w-sm mb-8 leading-relaxed">
-                                Building the tools modern professionals need to scale their brands with authenticity and pure automation.
+                        ))}
+                    </div>
+                </div>
+            </section>
+
+            <section id="faq" className="border-t border-slate-200 bg-white px-4 py-20 sm:px-6">
+                <div className="mx-auto max-w-3xl">
+                    <h2 className="text-center text-3xl font-bold text-slate-950">Questions?</h2>
+                    <div className="mt-10 space-y-4">
+                        {faqs.map((faq) => (
+                            <div key={faq.question} className="rounded-xl border border-slate-200 bg-slate-50 p-6">
+                                <h3 className="font-bold text-slate-950">{faq.question}</h3>
+                                <p className="mt-2 text-sm leading-6 text-slate-600">{faq.answer}</p>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </section>
+
+            <footer className="bg-slate-950 px-4 py-12 text-white sm:px-6">
+                <div className="mx-auto max-w-7xl">
+                    <div className="grid grid-cols-1 gap-10 md:grid-cols-4">
+                        <div className="md:col-span-2">
+                            <div className="flex items-center gap-3">
+                                <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-white">
+                                    <img src="/eLautopost_logo.png" alt="eLAutopost AI Logo" className="h-10 w-10 object-contain" />
+                                </span>
+                                <span className="text-xl font-bold">eLAutopost AI</span>
+                            </div>
+                            <p className="mt-5 max-w-md text-sm leading-6 text-slate-400">
+                                Tools for modern professionals to scale LinkedIn content with strategy, consistency, and secure automation.
                             </p>
                         </div>
-                        
                         <div>
-                            <h3 className="text-sm font-bold text-white mb-6 uppercase tracking-wider">Product</h3>
-                            <ul className="space-y-4 text-sm text-slate-400 font-medium">
-                                <li><a href="#features" className="hover:text-blue-400 transition-colors">Features</a></li>
-                                <li><a href="#pricing" className="hover:text-blue-400 transition-colors">Pricing</a></li>
-                                <li><Link href="/login" className="hover:text-blue-400 transition-colors">Login</Link></li>
-                                <li><Link href="/signup" className="hover:text-blue-400 transition-colors">Sign Up</Link></li>
+                            <h3 className="text-sm font-bold uppercase tracking-wide">Product</h3>
+                            <ul className="mt-5 space-y-3 text-sm text-slate-400">
+                                <li><a href="#features" className="hover:text-white">Features</a></li>
+                                <li><a href="#pricing" className="hover:text-white">Pricing</a></li>
+                                <li><Link href="/login" className="hover:text-white">Login</Link></li>
+                                <li><Link href="/signup" className="hover:text-white">Sign Up</Link></li>
                             </ul>
                         </div>
-
                         <div>
-                            <h3 className="text-sm font-bold text-white mb-6 uppercase tracking-wider">Legal</h3>
-                            <ul className="space-y-4 text-sm text-slate-400 font-medium">
-                                <li><Link href="/privacy" className="hover:text-blue-400 transition-colors">Privacy Policy</Link></li>
-                                <li><Link href="/privacy" className="hover:text-blue-400 transition-colors">Terms of Service</Link></li>
-                                <li><Link href="/cookies" className="hover:text-blue-400 transition-colors">Cookie Policy</Link></li>
-                                <li><Link href="/signup" className="hover:text-blue-400 transition-colors">Contact</Link></li>
+                            <h3 className="text-sm font-bold uppercase tracking-wide">Legal</h3>
+                            <ul className="mt-5 space-y-3 text-sm text-slate-400">
+                                <li><Link href="/privacy" className="hover:text-white">Privacy Policy</Link></li>
+                                <li><Link href="/terms" className="hover:text-white">Terms of Service</Link></li>
+                                <li><Link href="/cookies" className="hover:text-white">Cookie Policy</Link></li>
+                                <li><Link href="/contact" className="hover:text-white">Contact</Link></li>
                             </ul>
                         </div>
                     </div>
-
-                    <div className="border-t border-slate-800 pt-8 flex flex-col md:flex-row justify-between items-center gap-6">
-                        <p className="text-slate-500 text-sm font-medium">
-                            © {new Date().getFullYear()} eLAutopost AI. All rights reserved.
-                        </p>
-                        
-                        <div className="flex items-center space-x-6 text-sm">
-                            <a 
-                                href="https://ecantechesolutions.vercel.app/" 
-                                target="_blank" 
+                    <div className="mt-10 flex flex-col gap-5 border-t border-slate-800 pt-6 md:flex-row md:items-center md:justify-between">
+                        <p className="text-sm text-slate-500">© {new Date().getFullYear()} eLAutopost AI. All rights reserved.</p>
+                        <div className="flex items-center gap-5">
+                            <a
+                                href="https://ecantechesolutions.vercel.app/"
+                                target="_blank"
                                 rel="noopener noreferrer"
-                                className="flex items-center text-slate-400 hover:text-white transition-all font-semibold group"
+                                className="flex items-center gap-2 text-sm font-semibold text-slate-300 hover:text-white"
                             >
-                                <img 
-                                    src="https://res.cloudinary.com/dur6fkyoz/image/upload/v1773518487/ChatGPT_Image_Nov_17_2025_07_19_54_AM_ifltwd.png" 
-                                    alt="eCantech Logo" 
-                                    className="h-6 w-auto mr-2 group-hover:scale-105 transition-transform rounded-sm"
+                                <img
+                                    src="https://res.cloudinary.com/dur6fkyoz/image/upload/v1773518487/ChatGPT_Image_Nov_17_2025_07_19_54_AM_ifltwd.png"
+                                    alt="eCantech Logo"
+                                    className="h-7 w-7 rounded bg-white object-contain"
                                 />
                                 eCantech eSolutions
                             </a>
-                            
-                            <div className="flex items-center space-x-4 border-l border-slate-700 pl-6">
-                                <a 
-                                    href="https://www.linkedin.com/in/ecantech-esolutions-436a71383/" 
-                                    target="_blank" 
-                                    rel="noopener noreferrer"
-                                    className="text-slate-500 hover:text-[#0A66C2] transition-colors"
-                                    aria-label="LinkedIn"
-                                >
-                                    <Linkedin className="h-5 w-5" />
-                                </a>
-                                <a 
-                                    href="https://www.instagram.com/ecantech_esolutions/" 
-                                    target="_blank" 
-                                    rel="noopener noreferrer"
-                                    className="text-slate-500 hover:text-pink-500 transition-colors"
-                                    aria-label="Instagram"
-                                >
-                                    <Instagram className="h-5 w-5" />
-                                </a>
-                            </div>
+                            <a href="https://www.linkedin.com/in/ecantech-esolutions-436a71383/" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn" className="text-slate-400 hover:text-white">
+                                <Linkedin className="h-5 w-5" />
+                            </a>
+                            <a href="https://www.instagram.com/ecantech_esolutions/" target="_blank" rel="noopener noreferrer" aria-label="Instagram" className="text-slate-400 hover:text-white">
+                                <Instagram className="h-5 w-5" />
+                            </a>
                         </div>
                     </div>
                 </div>

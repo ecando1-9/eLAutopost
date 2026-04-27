@@ -105,7 +105,8 @@ async def add_process_time_header(request: Request, call_next):
     start_time = time.time()
     response = await call_next(request)
     process_time = time.time() - start_time
-    response.headers["X-Process-Time"] = str(process_time)
+    if settings.DEBUG:
+        response.headers["X-Process-Time"] = str(process_time)
     return response
 
 
@@ -122,6 +123,10 @@ async def add_security_headers(request: Request, call_next):
     security_headers = get_security_headers()
     for header, value in security_headers.items():
         response.headers[header] = value
+
+    if request.url.path.startswith(settings.API_V1_PREFIX):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
     
     return response
 

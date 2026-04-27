@@ -56,9 +56,9 @@ class UserSignup(BaseModel):
     email: EmailStr = Field(..., description="User email address")
     password: str = Field(
         ...,
-        min_length=8,
-        max_length=128,
-        description="Password (min 8 characters)"
+        min_length=10,
+        max_length=72,
+        description="Password (10-72 characters with mixed case, number, and special character)"
     )
     full_name: str = Field(
         ...,
@@ -78,12 +78,16 @@ class UserSignup(BaseModel):
         Validate password strength.
         
         Requirements:
-        - At least 8 characters
+        - 10 to 72 characters
         - Contains uppercase and lowercase
         - Contains at least one number
+        - Contains at least one special character
         """
-        if len(v) < 8:
-            raise ValueError("Password must be at least 8 characters")
+        if len(v) < 10:
+            raise ValueError("Password must be at least 10 characters")
+
+        if len(v) > 72:
+            raise ValueError("Password must be no more than 72 characters")
         
         if not any(c.isupper() for c in v):
             raise ValueError("Password must contain at least one uppercase letter")
@@ -93,6 +97,9 @@ class UserSignup(BaseModel):
         
         if not any(c.isdigit() for c in v):
             raise ValueError("Password must contain at least one number")
+
+        if not any(not c.isalnum() for c in v):
+            raise ValueError("Password must contain at least one special character")
         
         return v
 
@@ -100,7 +107,7 @@ class UserSignup(BaseModel):
 class UserLogin(BaseModel):
     """User login request model."""
     email: EmailStr = Field(..., description="User email address")
-    password: str = Field(..., description="User password")
+    password: str = Field(..., min_length=1, max_length=72, description="User password")
 
 
 class SignupResponse(BaseModel):

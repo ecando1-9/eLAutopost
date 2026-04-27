@@ -13,6 +13,12 @@ import {
     resendConfirmationEmail,
     shouldOfferConfirmationResend,
 } from '@/lib/auth-email';
+import {
+    PASSWORD_RULES,
+    validateEmailAddress,
+    validateLoginPassword,
+    validateSignupPassword,
+} from '@/lib/auth-validation';
 
 export default function AuthPage() {
     const router = useRouter();
@@ -36,6 +42,19 @@ export default function AuthPage() {
         setPendingVerificationEmail(null);
 
         const authEmail = normalizeEmail(email);
+        const emailError = validateEmailAddress(authEmail);
+        const passwordError = isSignup
+            ? validateSignupPassword(password)
+            : validateLoginPassword(password);
+        const nameError = isSignup && fullName.trim().length < 2
+            ? 'Full name must be at least 2 characters.'
+            : null;
+
+        if (emailError || passwordError || nameError) {
+            setError(emailError || passwordError || nameError);
+            setLoading(false);
+            return;
+        }
 
         try {
             if (isSignup) {
@@ -230,6 +249,7 @@ export default function AuthPage() {
                                         type="text"
                                         autoComplete="name"
                                         required
+                                        maxLength={100}
                                         value={fullName}
                                         onChange={(e) => setFullName(e.target.value)}
                                         className="block w-full appearance-none rounded-lg border border-gray-300 px-3 py-2 placeholder-gray-400 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
@@ -249,6 +269,7 @@ export default function AuthPage() {
                                     type="email"
                                     autoComplete="email"
                                     required
+                                    maxLength={254}
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
                                     className="block w-full appearance-none rounded-lg border border-gray-300 px-3 py-2 placeholder-gray-400 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
@@ -267,6 +288,8 @@ export default function AuthPage() {
                                     type="password"
                                     autoComplete={isSignup ? 'new-password' : 'current-password'}
                                     required
+                                    minLength={isSignup ? PASSWORD_RULES.minLength : undefined}
+                                    maxLength={PASSWORD_RULES.maxLength}
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
                                     className="block w-full appearance-none rounded-lg border border-gray-300 px-3 py-2 placeholder-gray-400 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"

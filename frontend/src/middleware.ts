@@ -2,6 +2,86 @@ import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
+type RateLimitBucket = {
+    count: number;
+    resetAt: number;
+};
+
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const rateLimitStore = new Map<string, RateLimitBucket>();
+
+function getClientIdentifier(req: NextRequest) {
+    return (
+        req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+        || req.headers.get('x-real-ip')
+        || 'unknown'
+    );
+}
+
+function getRateLimit(pathname: string) {
+    if (pathname.startsWith('/admin/login')) {
+        return 10;
+    }
+    if (pathname.startsWith('/login') || pathname.startsWith('/signup')) {
+        return 20;
+    }
+    if (pathname.startsWith('/api/v1/auth')) {
+        return 20;
+    }
+    if (pathname.startsWith('/api/v1/content') || pathname.includes('/ai-rewrite')) {
+        return 20;
+    }
+    if (pathname.startsWith('/api/v1/billing')) {
+        return 30;
+    }
+    if (pathname.startsWith('/api/v1')) {
+        return 90;
+    }
+    return null;
+}
+
+function rateLimitResponse(req: NextRequest) {
+    const pathname = req.nextUrl.pathname;
+    const limit = getRateLimit(pathname);
+    if (!limit) {
+        return null;
+    }
+
+    const now = Date.now();
+    const identifier = getClientIdentifier(req);
+    const key = `${identifier}:${pathname}`;
+    const current = rateLimitStore.get(key);
+
+    if (!current || current.resetAt <= now) {
+        rateLimitStore.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+        return null;
+    }
+
+    current.count += 1;
+    if (current.count <= limit) {
+        return null;
+    }
+
+    if (rateLimitStore.size > 1000) {
+        for (const [bucketKey, bucket] of rateLimitStore.entries()) {
+            if (bucket.resetAt <= now) {
+                rateLimitStore.delete(bucketKey);
+            }
+        }
+    }
+
+    const retryAfter = Math.max(1, Math.ceil((current.resetAt - now) / 1000));
+    const response = pathname.startsWith('/api/')
+        ? NextResponse.json(
+            { error: 'Rate limit exceeded', message: 'Too many requests. Please try again later.' },
+            { status: 429 }
+        )
+        : new NextResponse('Too many requests. Please try again later.', { status: 429 });
+
+    response.headers.set('Retry-After', String(retryAfter));
+    return response;
+}
+
 function applySecurityHeaders(response: NextResponse) {
     const scriptSrc = process.env.NODE_ENV === 'production'
         ? "script-src 'self' 'unsafe-inline' https://checkout.razorpay.com"
@@ -39,6 +119,11 @@ function applySecurityHeaders(response: NextResponse) {
 export async function middleware(req: NextRequest) {
     const res = NextResponse.next();
     const supabase = createMiddlewareClient({ req, res });
+    const rateLimitedResponse = rateLimitResponse(req);
+
+    if (rateLimitedResponse) {
+        return applySecurityHeaders(rateLimitedResponse);
+    }
 
     // Refresh session if expired
     const { data: { session } } = await supabase.auth.getSession();

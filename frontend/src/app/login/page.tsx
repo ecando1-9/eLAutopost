@@ -13,6 +13,7 @@ import {
     resendConfirmationEmail,
     shouldOfferConfirmationResend,
 } from '@/lib/auth-email';
+import { PASSWORD_RULES, validateEmailAddress, validateLoginPassword } from '@/lib/auth-validation';
 
 export default function LoginPage() {
     const router = useRouter();
@@ -34,6 +35,14 @@ export default function LoginPage() {
         setPendingVerificationEmail(null);
 
         const loginEmail = normalizeEmail(email);
+        const emailError = validateEmailAddress(loginEmail);
+        const passwordError = validateLoginPassword(password);
+
+        if (emailError || passwordError) {
+            setError(emailError || passwordError);
+            setLoading(false);
+            return;
+        }
 
         try {
             const { error } = await supabase.auth.signInWithPassword({
@@ -217,6 +226,7 @@ export default function LoginPage() {
                                         autoComplete="email"
                                         placeholder="Email address"
                                         required
+                                        maxLength={254}
                                         value={email}
                                         onChange={(e) => setEmail(e.target.value)}
                                         className="block w-full h-11 appearance-none rounded-xl border border-slate-200 bg-slate-50 px-4 placeholder-slate-400 text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 sm:text-sm transition-all"
@@ -231,6 +241,7 @@ export default function LoginPage() {
                                         autoComplete="current-password"
                                         placeholder="Password"
                                         required
+                                        maxLength={PASSWORD_RULES.maxLength}
                                         value={password}
                                         onChange={(e) => setPassword(e.target.value)}
                                         className="block w-full h-11 appearance-none rounded-xl border border-slate-200 bg-slate-50 px-4 placeholder-slate-400 text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 sm:text-sm transition-all"

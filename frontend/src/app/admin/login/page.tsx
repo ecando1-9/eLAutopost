@@ -12,6 +12,7 @@ import {
     resendConfirmationEmail,
     shouldOfferConfirmationResend,
 } from '@/lib/auth-email';
+import { PASSWORD_RULES, validateEmailAddress, validateLoginPassword } from '@/lib/auth-validation';
 
 export default function AdminLoginPage() {
     const router = useRouter();
@@ -32,6 +33,14 @@ export default function AdminLoginPage() {
         setPendingVerificationEmail(null);
 
         const loginEmail = normalizeEmail(email);
+        const emailError = validateEmailAddress(loginEmail);
+        const passwordError = validateLoginPassword(password);
+
+        if (emailError || passwordError) {
+            setError(emailError || passwordError);
+            setLoading(false);
+            return;
+        }
 
         try {
             const { error } = await supabase.auth.signInWithPassword({
@@ -148,6 +157,7 @@ export default function AdminLoginPage() {
                                     type="email"
                                     autoComplete="email"
                                     required
+                                    maxLength={254}
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
                                     className="block w-full appearance-none rounded-lg border border-white/30 bg-white/10 backdrop-blur px-3 py-2 text-white placeholder-gray-400 shadow-sm focus:border-blue-400 focus:outline-none focus:ring-blue-400 sm:text-sm"
@@ -167,6 +177,7 @@ export default function AdminLoginPage() {
                                     type="password"
                                     autoComplete="current-password"
                                     required
+                                    maxLength={PASSWORD_RULES.maxLength}
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
                                     className="block w-full appearance-none rounded-lg border border-white/30 bg-white/10 backdrop-blur px-3 py-2 text-white placeholder-gray-400 shadow-sm focus:border-blue-400 focus:outline-none focus:ring-blue-400 sm:text-sm"
