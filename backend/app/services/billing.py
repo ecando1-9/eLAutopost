@@ -84,7 +84,15 @@ class BillingService:
                 "*"
             ).eq("is_active", True).order("sort_order").execute()
             if result.data:
-                return result.data
+                plans = result.data
+                active_plan_names = {str(item.get("plan_name") or "").strip().lower() for item in plans}
+                if "starter" in active_plan_names and "pro" in active_plan_names:
+                    plans = [
+                        item
+                        for item in plans
+                        if str(item.get("plan_name") or "").strip().lower() != "monthly"
+                    ]
+                return plans
         except Exception as e:
             logger.warning(f"Using env billing plan fallback: {e}")
 
