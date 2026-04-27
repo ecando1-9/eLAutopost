@@ -84,6 +84,13 @@ interface ScheduleResponse {
     auto_topic?: boolean;
 }
 
+interface SetupCheck {
+    label: string;
+    done: boolean;
+    sectionId: string;
+    helperText: string;
+}
+
 const DAYS: { value: Day; label: string }[] = [
     { value: 'MON', label: 'Mon' },
     { value: 'TUE', label: 'Tue' },
@@ -272,20 +279,48 @@ export default function SettingsPage() {
         });
     };
 
-    const setupChecks = useMemo(
+    const scrollToSection = (sectionId: string) => {
+        const section = document.getElementById(sectionId);
+        if (!section) {
+            return;
+        }
+
+        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+
+    const setupChecks = useMemo<SetupCheck[]>(
         () => [
-            { label: 'LinkedIn connected', done: isLinkedInConnected },
-            { label: 'Auto-post enabled', done: isActive },
+            {
+                label: 'LinkedIn connected',
+                done: isLinkedInConnected,
+                sectionId: 'linkedin-workspace',
+                helperText: isLinkedInConnected ? 'Open LinkedIn connection details.' : 'Connect your LinkedIn profile.',
+            },
+            {
+                label: 'Auto-post enabled',
+                done: isActive,
+                sectionId: 'publishing-rhythm',
+                helperText: isActive ? 'Review your auto-post switch.' : 'Turn on auto-posting.',
+            },
             {
                 label: 'Schedule selected',
                 done: daysOfWeek.length > 0 && filledSlotTimes.length === maxPostsPerDay,
+                sectionId: 'publishing-rhythm',
+                helperText: 'Choose active days, times, and timezone.',
             },
-            { label: 'Content defaults selected', done: preferredContentTypes.length > 0 },
+            {
+                label: 'Content defaults selected',
+                done: preferredContentTypes.length > 0,
+                sectionId: 'generation-profile',
+                helperText: 'Pick your preferred content mix.',
+            },
             {
                 label: 'Posting target configured',
                 done:
                     targetMode === 'person' ||
                     ((targetMode === 'organization' || targetMode === 'both') && !!organizationId.trim()),
+                sectionId: 'generation-profile',
+                helperText: 'Set profile or page posting target.',
             },
         ],
         [
@@ -774,7 +809,7 @@ export default function SettingsPage() {
                 )}
 
                 <div className="grid gap-6 xl:grid-cols-[minmax(0,1.22fr)_minmax(280px,0.78fr)]">
-                    <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm sm:p-7">
+                    <section id="linkedin-workspace" className="scroll-mt-24 rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm sm:p-7">
                         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                             <div className="flex items-start gap-4">
                                 <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-100 text-sky-700">
@@ -950,24 +985,28 @@ export default function SettingsPage() {
 
                         <div className="mt-5 space-y-3">
                             {setupChecks.map((check, index) => (
-                                <div
+                                <button
                                     key={check.label}
+                                    type="button"
+                                    onClick={() => scrollToSection(check.sectionId)}
                                     className={`flex items-start gap-3 rounded-2xl border px-4 py-3 ${
                                         check.done ? 'border-emerald-200 bg-emerald-50/70' : 'border-slate-200 bg-slate-50/80'
-                                    }`}
+                                    } w-full text-left transition-all hover:-translate-y-0.5 hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2`}
                                 >
                                     <div className={`mt-0.5 flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${
                                         check.done ? 'bg-emerald-100 text-emerald-700' : 'bg-white text-slate-500 ring-1 ring-slate-200'
                                     }`}>
                                         {check.done ? <CheckCircle2 className="h-4 w-4" /> : index + 1}
                                     </div>
-                                    <div className="min-w-0">
+                                    <div className="min-w-0 flex-1">
                                         <p className={`text-sm font-semibold ${check.done ? 'text-slate-900' : 'text-slate-700'}`}>{check.label}</p>
                                         <p className={`mt-1 text-xs ${check.done ? 'text-emerald-700' : 'text-slate-500'}`}>
                                             {check.done ? 'Configured and ready.' : 'Still needs attention before the system is fully ready.'}
                                         </p>
+                                        <p className="mt-2 text-xs font-semibold text-sky-700">{check.helperText}</p>
                                     </div>
-                                </div>
+                                    <span className="mt-1 text-xs font-semibold text-slate-500">Go to section</span>
+                                </button>
                             ))}
                         </div>
 
@@ -992,7 +1031,7 @@ export default function SettingsPage() {
                 </div>
 
                 <div className="grid gap-6 2xl:grid-cols-[minmax(0,1.02fr)_minmax(0,0.98fr)]">
-                    <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm sm:p-7">
+                    <section id="publishing-rhythm" className="scroll-mt-24 rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm sm:p-7">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                             <div>
                                 <p className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-700">
@@ -1207,7 +1246,7 @@ export default function SettingsPage() {
                         </div>
                     </section>
 
-                    <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm sm:p-7">
+                    <section id="generation-profile" className="scroll-mt-24 rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm sm:p-7">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                             <div>
                                 <p className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-indigo-700">

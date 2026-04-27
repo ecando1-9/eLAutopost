@@ -10,9 +10,7 @@ import {
     Gauge,
     Instagram,
     Linkedin,
-    LockKeyhole,
     PenTool,
-    ShieldCheck,
     Sparkles,
     Timer,
     Zap,
@@ -43,11 +41,6 @@ const features = [
         icon: Gauge,
         title: 'Engagement Scoring',
         description: 'Review content quality signals before publishing so posts are easier to scan, understand, and act on.',
-    },
-    {
-        icon: ShieldCheck,
-        title: 'Security-First Workflow',
-        description: 'Email verification, strong passwords, rate limits, secure headers, and admin-only controls protect the account flow.',
     },
 ];
 
@@ -83,13 +76,6 @@ const plans = [
     },
 ];
 
-const securityItems = [
-    'Verified email before first password login',
-    'Strong password rules with min/max length',
-    'Rate limits for login, admin, billing, and API routes',
-    'Security headers, same-origin API checks, and admin route protection',
-];
-
 const faqs = [
     {
         question: 'Is there a free trial?',
@@ -122,7 +108,6 @@ export default function LandingPage() {
                     <div className="hidden items-center gap-7 text-sm font-semibold text-slate-600 md:flex">
                         <a href="#features" className="hover:text-sky-700">Features</a>
                         <a href="#pricing" className="hover:text-sky-700">Pricing</a>
-                        <a href="#security" className="hover:text-sky-700">Security</a>
                         <a href="#faq" className="hover:text-sky-700">FAQ</a>
                     </div>
 
@@ -258,24 +243,6 @@ export default function LandingPage() {
                                 >
                                     {plan.cta}
                                 </Link>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            </section>
-
-            <section id="security" className="bg-slate-50 px-4 py-20 sm:px-6">
-                <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[0.85fr_1.15fr]">
-                    <div>
-                        <p className="text-sm font-bold uppercase tracking-[0.18em] text-sky-700">Security</p>
-                        <h2 className="mt-3 text-3xl font-bold text-slate-950">Built with OWASP-style account safety in mind.</h2>
-                        <p className="mt-4 text-slate-600">The application protects account creation, login, admin actions, and API requests with practical layered controls.</p>
-                    </div>
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                        {securityItems.map((item) => (
-                            <div key={item} className="flex gap-3 rounded-xl border border-slate-200 bg-white p-5">
-                                <LockKeyhole className="mt-0.5 h-5 w-5 shrink-0 text-sky-700" />
-                                <p className="text-sm font-semibold leading-6 text-slate-700">{item}</p>
                             </div>
                         ))}
                     </div>
