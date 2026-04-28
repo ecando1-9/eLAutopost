@@ -90,6 +90,24 @@ export default function BillingPage() {
         });
     };
 
+    // Convert raw DB plan slugs to friendly display names
+    const formatPlanName = (slug?: string): string => {
+        if (!slug) return '—';
+        const map: Record<string, string> = {
+            monthly_trial: 'Free Trial',
+            trial: 'Free Trial',
+            free_trial: 'Free Trial',
+            pro: 'Pro Plan',
+            pro_monthly: 'Pro Plan',
+            monthly: 'Monthly Plan',
+            starter: 'Starter Plan',
+            starter_monthly: 'Starter Plan',
+            annual: 'Annual Plan',
+            yearly: 'Annual Plan',
+        };
+        return map[slug.toLowerCase()] ?? slug.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    };
+
     const readResponseError = async (res: Response) => {
         try {
             const p = await res.json();
@@ -237,7 +255,7 @@ export default function BillingPage() {
                         <div className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
                             <div>
                                 <p className="text-slate-500">Plan</p>
-                                <p className="font-semibold text-slate-900 capitalize">{subscription?.plan_name || '—'}</p>
+                                <p className="font-semibold text-slate-900">{formatPlanName(subscription?.plan_name)}</p>
                             </div>
                             <div>
                                 <p className="text-slate-500">{isSubscribed ? 'Renews' : isTrialActive ? 'Trial ends' : 'Expired'}</p>

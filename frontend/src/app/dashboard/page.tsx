@@ -341,6 +341,22 @@ export default function UserDashboard() {
         });
     };
 
+    // Convert raw plan_name/status slugs into readable labels
+    const formatPlanLabel = (slug?: string): string => {
+        if (!slug) return 'Free Trial';
+        const map: Record<string, string> = {
+            monthly_trial: 'Free Trial',
+            trial: 'Free Trial',
+            free_trial: 'Free Trial',
+            active: 'Active',
+            expired: 'Expired',
+            pro: 'Pro',
+            monthly: 'Monthly',
+            starter: 'Starter',
+        };
+        return map[slug.toLowerCase()] ?? slug.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    };
+
     const isTrialActive = data?.subscription?.status === 'trial';
     const isSubscribed = data?.subscription?.status === 'active';
     const hasAccess = isTrialActive || isSubscribed;
@@ -532,7 +548,7 @@ export default function UserDashboard() {
                                     {isTrialActive ? 'Upgrade to Pro' : 'Choose Your Plan'}
                                 </h2>
                                 <p className="mt-2 text-sm leading-6 text-slate-600">
-                                    {planWindowLabel}: {planWindowValue} · Status: {(data?.subscription?.status || 'trial').toUpperCase()}
+                                    {planWindowLabel}: {planWindowValue} · {formatPlanLabel(data?.subscription?.status)}
                                 </p>
                             </div>
                             <input
