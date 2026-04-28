@@ -333,7 +333,7 @@ export default function AppShell({
                                     rel="noopener noreferrer"
                                     className="text-indigo-500 hover:text-indigo-700 transition-colors underline underline-offset-2"
                                 >
-                                    eCan Tech eSolutions
+                                    EcanTech E-Solutions
                                 </a>
                             </p>
                             <div className="mt-4 flex gap-3">
