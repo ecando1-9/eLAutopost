@@ -146,6 +146,17 @@ class Settings(BaseSettings):
     DATABASE_POOL_SIZE: int = 10
     DATABASE_MAX_OVERFLOW: int = 20
     
+    @field_validator("DEBUG", "ENABLE_EMBEDDED_SCHEDULER", mode="before")
+    def coerce_bool(cls, v):
+        """
+        Strip whitespace/newlines from boolean env vars before Pydantic parses them.
+        Render (and some CI systems) can inject trailing newlines into env var values,
+        which causes 'False\\n' to fail bool parsing.
+        """
+        if isinstance(v, str):
+            return v.strip()
+        return v
+
     @field_validator("BACKEND_CORS_ORIGINS", mode="before")
     def assemble_cors_origins(cls, v):
         """
