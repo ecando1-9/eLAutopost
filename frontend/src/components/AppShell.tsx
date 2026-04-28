@@ -325,7 +325,17 @@ export default function AppShell({
                             <p className="text-xs text-slate-500 leading-relaxed max-w-[200px]">
                                 AI-powered LinkedIn content automation. Built for consistent growth.
                             </p>
-                            <p className="mt-3 text-[11px] text-slate-400">A product by eCan Tech eSolutions</p>
+                            <p className="mt-3 text-[11px] text-slate-400">
+                                A product by{' '}
+                                <a
+                                    href="https://ecantechesolutions.vercel.app/"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-indigo-500 hover:text-indigo-700 transition-colors underline underline-offset-2"
+                                >
+                                    eCan Tech eSolutions
+                                </a>
+                            </p>
                             <div className="mt-4 flex gap-3">
                                 <a
                                     href="https://www.linkedin.com/in/ecantech-esolutions-436a71383/"
