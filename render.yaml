@@ -4,18 +4,10 @@ services:
     runtime: python
     rootDir: backend
     buildCommand: pip install -r requirements.txt
+    # Scheduler runs INSIDE the web process so UptimeRobot pings keep it alive.
+    # On Render free plan, the separate worker service sleeps and cannot be kept awake by pinging.
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
       - key: ENABLE_EMBEDDED_SCHEDULER
-        value: "false"
-
-  - type: worker
-    name: elautopost-scheduler
-    runtime: python
-    rootDir: backend
-    buildCommand: pip install -r requirements.txt
-    startCommand: python -m app.worker.service
-    envVars:
-      - key: ENABLE_EMBEDDED_SCHEDULER
-        value: "false"
+        value: "true"

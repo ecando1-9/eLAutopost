@@ -18,6 +18,7 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from contextlib import asynccontextmanager
 import time
+import os
 
 from .core.config import settings, logger
 from .core.security import get_security_headers
@@ -41,7 +42,7 @@ from .worker.service import start_scheduler
 async def lifespan(app: FastAPI):
     """
     Application lifespan context manager.
-    
+
     Handles startup and shutdown events.
     """
     # Startup
@@ -52,14 +53,40 @@ async def lifespan(app: FastAPI):
     scheduler = None
     if settings.ENABLE_EMBEDDED_SCHEDULER:
         scheduler = start_scheduler(service_name="api")
+
+        # Self-ping keepalive: prevents Render free plan from spinning down.
+        # Runs every 4 minutes so the 15-min inactivity timer never triggers.
+        render_url = os.environ.get("RENDER_EXTERNAL_URL", "")
+        if render_url:
+            import httpx
+            async def _self_ping():
+                try:
+                    async with httpx.AsyncClient(timeout=10) as client:
+                        await client.get(f"{render_url}/health")
+                    logger.debug("Self-ping OK")
+                except Exception as ping_err:
+                    logger.warning(f"Self-ping failed: {ping_err}")
+
+            scheduler.add_job(
+                _self_ping,
+                "interval",
+                minutes=4,
+                id="keepalive_ping",
+                replace_existing=True,
+                coalesce=True,
+                max_instances=1,
+            )
+            logger.info(f"Keepalive self-ping enabled → {render_url}/health every 4 min")
+        else:
+            logger.info("RENDER_EXTERNAL_URL not set — self-ping keepalive skipped")
     else:
         logger.info(
             "Embedded scheduler disabled for API process. "
             "Use a dedicated worker service for background posting."
         )
-    
+
     yield
-    
+
     # Shutdown
     if scheduler is not None:
         scheduler.shutdown()
@@ -271,28 +298,6 @@ app.include_router(
     prefix=f"{settings.API_V1_PREFIX}/user",
     tags=["User Content & Automation"]
 )
-
-
-# =============================================================================
-# HEALTH CHECK ENDPOINT
-# =============================================================================
-# This endpoint is designed to be pinged by UptimeRobot every 5 minutes.
-# It prevents the Render free plan from spinning down the service,
-# which would otherwise kill the APScheduler background jobs.
-
-@app.get("/health", tags=["Health"])
-async def health_check():
-    """
-    Health check endpoint.
-    Used by monitoring services to keep the server alive on Render.
-    """
-    from .core.datetime_utils import utc_now
-    return {
-        "status": "ok",
-        "timestamp": utc_now().isoformat(),
-        "service": settings.APP_NAME,
-        "version": settings.APP_VERSION
-    }
 
 
 # =============================================================================

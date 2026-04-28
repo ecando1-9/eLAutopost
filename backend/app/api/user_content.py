@@ -180,6 +180,10 @@ async def update_user_schedule(
 ):
     """Update user's posting schedule."""
     try:
+        # Read the OLD schedule before overwriting so we can detect time changes
+        old_schedule = await scheduler_service.get_user_schedule(user_id)
+        old_time_of_day = (old_schedule or {}).get("time_of_day", "")
+
         schedule = await scheduler_service.update_user_schedule(
             user_id=user_id,
             days_of_week=body.days_of_week,
@@ -190,15 +194,30 @@ async def update_user_schedule(
             auto_topic=body.auto_topic
         )
 
-        # Trigger background rescheduling for future queued posts so they snap to the new settings
-        try:
-            import asyncio
-            asyncio.create_task(scheduler_service.reschedule_future_posts(user_id, schedule))
-        except Exception as e:
-            logger.error(f"Failed to queue rescheduling task: {e}")
+        # If the user changed their posting times, delete all future auto-generated
+        # posts so they are recreated at the correct new times by the auto-generator.
+        # This prevents stale posts (e.g. 19:20) lingering after the user changed to 19:30.
+        times_changed = body.time_of_day.strip() != old_time_of_day.strip()
+        if times_changed:
+            try:
+                from ..services.database import supabase_client
+                from ..core.datetime_utils import utc_now
+                now_iso = utc_now().isoformat()
+                supabase_client.admin.table("posts").delete().eq(
+                    "user_id", user_id
+                ).in_(
+                    "status", ["scheduled", "pending_review"]
+                ).gte("scheduled_at", now_iso).execute()
+                logger.info(
+                    f"Deleted future auto-posts for user {user_id} "
+                    f"after time change ({old_time_of_day!r} → {body.time_of_day!r})"
+                )
+            except Exception as e:
+                logger.error(f"Failed to delete stale future posts for {user_id}: {e}")
 
         if body.is_active and body.auto_topic:
             try:
+                import asyncio
                 asyncio.create_task(auto_generator_worker.process_user_auto_generation(user_id))
             except Exception as e:
                 logger.error(f"Failed to queue auto-generation task: {e}")
