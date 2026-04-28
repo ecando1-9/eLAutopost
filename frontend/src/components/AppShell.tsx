@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import {
     CalendarDays,
     ClipboardList,
+    CreditCard,
     LayoutDashboard,
     Loader2,
     LogOut,
@@ -14,6 +15,7 @@ import {
     PenSquare,
     Settings,
     ShieldCheck,
+    User,
     X,
 } from 'lucide-react';
 
@@ -44,8 +46,11 @@ export default function AppShell({
     const router = useRouter();
     const [supabase] = useState(() => createClientComponentClient());
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+    const [profileOpen, setProfileOpen] = useState(false);
     const [signingOut, setSigningOut] = useState(false);
     const [userEmail, setUserEmail] = useState<string>('');
+    const [userInitial, setUserInitial] = useState<string>('U');
+    const profileRef = useRef<HTMLDivElement>(null);
 
     const navItems = useMemo<ShellNavItem[]>(
         () => [
@@ -61,26 +66,31 @@ export default function AppShell({
 
     useEffect(() => {
         let isActive = true;
-
         const loadUser = async () => {
-            const {
-                data: { session },
-            } = await supabase.auth.getSession();
-            if (isActive) {
-                setUserEmail(session?.user?.email || '');
+            const { data: { session } } = await supabase.auth.getSession();
+            if (isActive && session?.user) {
+                const email = session.user.email || '';
+                setUserEmail(email);
+                setUserInitial(email.charAt(0).toUpperCase() || 'U');
             }
         };
         void loadUser();
-
-        return () => {
-            isActive = false;
-        };
+        return () => { isActive = false; };
     }, [supabase]);
 
+    // Close profile dropdown on outside click
+    useEffect(() => {
+        const handler = (e: MouseEvent) => {
+            if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
+                setProfileOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, []);
+
     const isActive = (href: string) => {
-        if (href === '/dashboard') {
-            return pathname === '/dashboard';
-        }
+        if (href === '/dashboard') return pathname === '/dashboard';
         return pathname === href || pathname.startsWith(`${href}/`);
     };
 
@@ -94,12 +104,19 @@ export default function AppShell({
         }
     };
 
+    const profileMenuItems = [
+        { href: '/settings', label: 'Settings', icon: Settings },
+        { href: '/billing', label: 'Billing & Plan', icon: CreditCard },
+        { href: '/requirements', label: 'Requirements', icon: ShieldCheck },
+    ];
+
     return (
         <div className="min-h-screen bg-[#f4f8fb] text-slate-900">
             <div className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top_right,_#dbeafe_0%,_#f4f8fb_40%,_#f4f8fb_100%)]" />
 
             <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur-xl">
                 <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+                    {/* Logo */}
                     <div className="flex items-center gap-3">
                         <Link href="/dashboard" className="flex items-center gap-2">
                             <img
@@ -113,6 +130,7 @@ export default function AppShell({
                         </Link>
                     </div>
 
+                    {/* Desktop nav */}
                     <nav className="hidden items-center gap-1 md:flex">
                         {navItems.map((item) => {
                             const Icon = item.icon;
@@ -135,25 +153,85 @@ export default function AppShell({
                         })}
                     </nav>
 
+                    {/* Right side: Profile avatar dropdown + mobile menu */}
                     <div className="flex items-center gap-2">
-                        {userEmail && (
-                            <p className="hidden rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-600 lg:block">
-                                {userEmail}
-                            </p>
-                        )}
-                        <button
-                            type="button"
-                            onClick={handleSignOut}
-                            disabled={signingOut}
-                            className="hidden items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 md:inline-flex disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                            {signingOut ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                                <LogOut className="h-4 w-4" />
+                        {/* Profile dropdown */}
+                        <div className="relative" ref={profileRef}>
+                            <button
+                                type="button"
+                                id="profile-menu-button"
+                                onClick={() => setProfileOpen((prev) => !prev)}
+                                className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-2 py-1.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-sky-400"
+                                aria-label="Open profile menu"
+                                aria-haspopup="true"
+                                aria-expanded={profileOpen}
+                            >
+                                <span className="hidden text-xs text-slate-500 lg:block max-w-[140px] truncate">
+                                    {userEmail}
+                                </span>
+                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-sky-500 to-indigo-600 text-white text-sm font-bold shadow-inner">
+                                    {userInitial}
+                                </div>
+                            </button>
+
+                            {/* Dropdown panel */}
+                            {profileOpen && (
+                                <div
+                                    className="absolute right-0 mt-2 w-56 origin-top-right rounded-2xl border border-slate-200 bg-white shadow-xl ring-1 ring-black/5 animate-in fade-in zoom-in-95 duration-100"
+                                    role="menu"
+                                >
+                                    {/* User info header */}
+                                    <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3">
+                                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-sky-500 to-indigo-600 text-white font-bold text-sm">
+                                            {userInitial}
+                                        </div>
+                                        <div className="min-w-0">
+                                            <p className="truncate text-xs font-semibold text-slate-900">{userEmail}</p>
+                                            <p className="text-[11px] text-slate-400">LinkedIn Automation</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Nav links */}
+                                    <div className="py-1.5">
+                                        {profileMenuItems.map((item) => {
+                                            const Icon = item.icon;
+                                            return (
+                                                <Link
+                                                    key={item.href}
+                                                    href={item.href}
+                                                    role="menuitem"
+                                                    onClick={() => setProfileOpen(false)}
+                                                    className="flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 transition hover:bg-slate-50 hover:text-slate-900"
+                                                >
+                                                    <Icon className="h-4 w-4 text-slate-400" />
+                                                    {item.label}
+                                                </Link>
+                                            );
+                                        })}
+                                    </div>
+
+                                    {/* Sign out */}
+                                    <div className="border-t border-slate-100 py-1.5">
+                                        <button
+                                            type="button"
+                                            role="menuitem"
+                                            onClick={() => { setProfileOpen(false); void handleSignOut(); }}
+                                            disabled={signingOut}
+                                            className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                        >
+                                            {signingOut ? (
+                                                <Loader2 className="h-4 w-4 animate-spin text-red-400" />
+                                            ) : (
+                                                <LogOut className="h-4 w-4 text-red-400" />
+                                            )}
+                                            Sign out
+                                        </button>
+                                    </div>
+                                </div>
                             )}
-                            Sign out
-                        </button>
+                        </div>
+
+                        {/* Mobile hamburger */}
                         <button
                             type="button"
                             onClick={() => setMobileMenuOpen((prev) => !prev)}
@@ -165,6 +243,7 @@ export default function AppShell({
                     </div>
                 </div>
 
+                {/* Mobile menu */}
                 {mobileMenuOpen && (
                     <div className="border-t border-slate-200 bg-white px-4 py-3 md:hidden">
                         <nav className="space-y-1">
@@ -187,19 +266,26 @@ export default function AppShell({
                                     </Link>
                                 );
                             })}
-                            <button
-                                type="button"
-                                onClick={handleSignOut}
-                                disabled={signingOut}
-                                className="flex w-full items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                                {signingOut ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                    <LogOut className="h-4 w-4" />
-                                )}
-                                Sign out
-                            </button>
+
+                            {/* Mobile profile links */}
+                            <div className="pt-2 border-t border-slate-100 mt-2 space-y-1">
+                                <Link
+                                    href="/billing"
+                                    onClick={() => setMobileMenuOpen(false)}
+                                    className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                                >
+                                    <CreditCard className="h-4 w-4" /> Billing &amp; Plan
+                                </Link>
+                                <button
+                                    type="button"
+                                    onClick={() => { setMobileMenuOpen(false); void handleSignOut(); }}
+                                    disabled={signingOut}
+                                    className="flex w-full items-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    {signingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
+                                    Sign out
+                                </button>
+                            </div>
                         </nav>
                     </div>
                 )}
@@ -227,7 +313,6 @@ export default function AppShell({
 
             <footer className="border-t border-slate-200 bg-white">
                 <div className="mx-auto max-w-7xl px-4 pt-10 pb-6 sm:px-6 lg:px-8">
-                    {/* Top row: 3 columns */}
                     <div className="grid gap-8 sm:grid-cols-3">
                         {/* Brand */}
                         <div>
@@ -241,7 +326,6 @@ export default function AppShell({
                                 AI-powered LinkedIn content automation. Built for consistent growth.
                             </p>
                             <p className="mt-3 text-[11px] text-slate-400">A product by eCan Tech eSolutions</p>
-                            {/* Social Icons */}
                             <div className="mt-4 flex gap-3">
                                 <a
                                     href="https://www.linkedin.com/in/ecantech-esolutions-436a71383/"
@@ -268,7 +352,7 @@ export default function AppShell({
                             </div>
                         </div>
 
-                        {/* Legal Links */}
+                        {/* Legal */}
                         <div>
                             <p className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-slate-400">Legal</p>
                             <ul className="space-y-2">
@@ -311,7 +395,6 @@ export default function AppShell({
                         </div>
                     </div>
 
-                    {/* Bottom bar */}
                     <div className="mt-8 border-t border-slate-100 pt-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <p className="text-[11px] text-slate-400">
                             © {new Date().getFullYear()} eCan Tech eSolutions. All rights reserved.

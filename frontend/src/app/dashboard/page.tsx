@@ -522,61 +522,88 @@ export default function UserDashboard() {
                     </div>
                 </div>
 
-                <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                    <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-                        <div>
-                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">Billing</p>
-                            <h2 className="mt-2 text-2xl font-bold text-slate-900">Choose Your Plan</h2>
-                            <p className="mt-2 text-sm leading-6 text-slate-600">
-                                {planWindowLabel}: {planWindowValue} · Status: {(data?.subscription?.status || 'trial').toUpperCase()}
-                            </p>
-                        </div>
-                        <input
-                            value={couponCode}
-                            onChange={(event) => setCouponCode(event.target.value.toUpperCase())}
-                            placeholder="Coupon code"
-                            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100 md:w-52"
-                        />
-                    </div>
-
-                    <div className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-2">
-                        {billingPlans.map((plan) => (
-                            <div
-                                key={plan.plan_name}
-                                className={`relative rounded-xl border p-5 ${plan.is_popular ? 'border-sky-300 bg-sky-50/40' : 'border-slate-200 bg-white'}`}
-                            >
-                                {plan.is_popular && (
-                                    <span className="absolute right-4 top-4 rounded-full bg-sky-600 px-3 py-1 text-xs font-semibold text-white">
-                                        Most Popular
-                                    </span>
-                                )}
-                                <p className="text-lg font-bold text-slate-900">{plan.display_name}</p>
-                                <p className="mt-1 text-sm text-slate-600">{plan.checkout_description}</p>
-                                <div className="mt-5 flex items-end gap-1">
-                                    <span className="text-3xl font-bold text-slate-950">₹{(plan.amount_paise / 100).toFixed(0)}</span>
-                                    <span className="pb-1 text-sm font-medium text-slate-500">/month</span>
-                                </div>
-                                <ul className="mt-5 space-y-2">
-                                    {plan.features.map((feature) => (
-                                        <li key={feature} className="flex items-start gap-2 text-sm text-slate-700">
-                                            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
-                                            {feature}
-                                        </li>
-                                    ))}
-                                </ul>
-                                <button
-                                    type="button"
-                                    onClick={() => handleStartCheckout(plan.plan_name)}
-                                    disabled={!billingEnabled || checkoutLoading}
-                                    className={`mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${plan.is_popular ? 'bg-sky-600 text-white hover:bg-sky-700' : 'border border-slate-300 bg-white text-slate-800 hover:bg-slate-50'}`}
-                                >
-                                    {checkoutLoading && checkoutPlanName === plan.plan_name ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
-                                    {billingEnabled ? (plan.plan_name === 'starter' ? 'Go with Starter' : checkoutButtonLabel) : 'Waiting for Billing Setup'}
-                                </button>
+                {/* Billing section — only show when NOT on active subscription */}
+                {!isSubscribed && (
+                    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                            <div>
+                                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">Billing</p>
+                                <h2 className="mt-2 text-2xl font-bold text-slate-900">
+                                    {isTrialActive ? 'Upgrade to Pro' : 'Choose Your Plan'}
+                                </h2>
+                                <p className="mt-2 text-sm leading-6 text-slate-600">
+                                    {planWindowLabel}: {planWindowValue} · Status: {(data?.subscription?.status || 'trial').toUpperCase()}
+                                </p>
                             </div>
-                        ))}
+                            <input
+                                value={couponCode}
+                                onChange={(event) => setCouponCode(event.target.value.toUpperCase())}
+                                placeholder="Coupon code"
+                                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100 md:w-52"
+                            />
+                        </div>
+
+                        <div className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-2">
+                            {billingPlans.map((plan) => (
+                                <div
+                                    key={plan.plan_name}
+                                    className={`relative rounded-xl border p-5 ${plan.is_popular ? 'border-sky-300 bg-sky-50/40' : 'border-slate-200 bg-white'}`}
+                                >
+                                    {plan.is_popular && (
+                                        <span className="absolute right-4 top-4 rounded-full bg-sky-600 px-3 py-1 text-xs font-semibold text-white">
+                                            Most Popular
+                                        </span>
+                                    )}
+                                    <p className="text-lg font-bold text-slate-900">{plan.display_name}</p>
+                                    <p className="mt-1 text-sm text-slate-600">{plan.checkout_description}</p>
+                                    <div className="mt-5 flex items-end gap-1">
+                                        <span className="text-3xl font-bold text-slate-950">₹{(plan.amount_paise / 100).toFixed(0)}</span>
+                                        <span className="pb-1 text-sm font-medium text-slate-500">/month</span>
+                                    </div>
+                                    <ul className="mt-5 space-y-2">
+                                        {plan.features.map((feature) => (
+                                            <li key={feature} className="flex items-start gap-2 text-sm text-slate-700">
+                                                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                                                {feature}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleStartCheckout(plan.plan_name)}
+                                        disabled={!billingEnabled || checkoutLoading}
+                                        className={`mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${plan.is_popular ? 'bg-sky-600 text-white hover:bg-sky-700' : 'border border-slate-300 bg-white text-slate-800 hover:bg-slate-50'}`}
+                                    >
+                                        {checkoutLoading && checkoutPlanName === plan.plan_name ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+                                        {billingEnabled ? (plan.plan_name === 'starter' ? 'Go with Starter' : checkoutButtonLabel) : 'Waiting for Billing Setup'}
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
                     </div>
-                </div>
+                )}
+
+                {/* Subscribed users: show a clean summary card linking to /billing */}
+                {isSubscribed && (
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                            <CheckCircle2 className="h-6 w-6 text-emerald-600 shrink-0" />
+                            <div>
+                                <p className="font-semibold text-emerald-900">Active Subscription</p>
+                                <p className="text-sm text-emerald-700">
+                                    Your plan is active · Renews {planWindowValue}
+                                </p>
+                            </div>
+                        </div>
+                        <a
+                            href="/billing"
+                            className="shrink-0 rounded-xl border border-emerald-300 bg-white px-4 py-2 text-sm font-semibold text-emerald-800 shadow-sm transition hover:bg-emerald-100"
+                        >
+                            Manage Plan →
+                        </a>
+                    </div>
+                )}
+
 
                 {/* Quick Actions */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
