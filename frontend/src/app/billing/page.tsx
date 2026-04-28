@@ -108,12 +108,20 @@ export default function BillingPage() {
         return map[slug.toLowerCase()] ?? slug.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
     };
 
-    const readResponseError = async (res: Response) => {
+    const readResponseError = async (res: Response): Promise<string> => {
         try {
             const p = await res.json();
-            return typeof p?.detail === 'string' ? p.detail : typeof p?.error === 'string' ? p.error : 'Something went wrong';
+            const msg = typeof p?.detail === 'string' ? p.detail
+                : typeof p?.error === 'string' ? p.error
+                : null;
+            if (!msg) return `Request failed (${res.status})`;
+            // Map backend auth errors to friendlier text
+            if (res.status === 401) return 'Session expired — please sign out and sign back in.';
+            if (res.status === 503) return 'Billing is not configured yet. Please contact support.';
+            return msg;
         } catch {
-            return (await res.text()) || 'Something went wrong';
+            if (res.status === 401) return 'Session expired — please sign out and sign back in.';
+            return (await res.text().catch(() => '')) || `Request failed (${res.status})`;
         }
     };
 
@@ -147,20 +155,24 @@ export default function BillingPage() {
     }, [supabase, router]);
 
     const handleStartCheckout = async (planName?: string) => {
-        if (!billing?.enabled) { toast.error('Razorpay is not configured on the server.'); return; }
-        if (!window.Razorpay) { toast.error('Razorpay is still loading. Please try again.'); return; }
+        if (!billing?.enabled) { toast.error('Billing is not configured on the server yet.'); return; }
+        if (!window.Razorpay) { toast.error('Payment SDK is still loading. Please try again in a moment.'); return; }
+
+        // Guard: ensure user has a valid session before starting checkout
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) {
+            toast.error('Your session has expired. Please sign out and sign back in.');
+            return;
+        }
 
         const selectedPlanName = planName || billing.plan_name;
         setCheckoutPlanName(selectedPlanName);
         setCheckoutLoading(true);
 
         try {
-            const { data: { session } } = await supabase.auth.getSession();
-            const token = session?.access_token;
-
             const res = await fetch('/api/v1/billing/create-order', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ plan_name: selectedPlanName, coupon_code: couponCode.trim() || undefined }),
             });
 
