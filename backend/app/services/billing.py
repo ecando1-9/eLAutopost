@@ -45,6 +45,7 @@ class BillingService:
             "display_name": plan["display_name"],
             "price": round(plan["amount_paise"] / 100, 2),
             "amount_paise": plan["amount_paise"],
+            "original_amount_paise": plan.get("original_amount_paise"),
             "currency": plan["currency"],
             "billing_period_days": plan["billing_period_days"],
             "plans": [
@@ -53,6 +54,7 @@ class BillingService:
                     "display_name": item["display_name"],
                     "price": round(item["amount_paise"] / 100, 2),
                     "amount_paise": item["amount_paise"],
+                    "original_amount_paise": item.get("original_amount_paise"),
                     "currency": item["currency"],
                     "billing_period_days": item["billing_period_days"],
                     "checkout_description": item.get("checkout_description"),
