@@ -6,13 +6,13 @@
 ALTER TABLE public.billing_plan_settings
     ADD COLUMN IF NOT EXISTS original_amount_paise INTEGER;
 
--- Set current plan prices with discounts:
--- Pro:     ₹299 original → ₹199 actual (33% off)
--- Starter: ₹149 original → ₹77 actual  (48% off)
+-- Set current plan prices:
+-- Pro:     ₹299 actual charge (no discount)
+-- Starter: ₹149 original → ₹77 actual (48% off)
 UPDATE public.billing_plan_settings
 SET
-    original_amount_paise = 29900,   -- ₹299 crossed out
-    amount_paise          = 19900,   -- ₹199 actual charge
+    original_amount_paise = NULL,     -- no strikethrough for Pro
+    amount_paise          = 29900,    -- ₹299 actual charge
     display_name          = 'Pro Growth Engine',
     features = '[
         "Full AI Strategy Engine",
@@ -27,8 +27,8 @@ WHERE plan_name = 'pro';
 
 UPDATE public.billing_plan_settings
 SET
-    original_amount_paise = 14900,   -- ₹149 crossed out
-    amount_paise          = 7700,    -- ₹77 actual charge
+    original_amount_paise = 14900,    -- ₹149 crossed out
+    amount_paise          = 7700,     -- ₹77 actual charge
     display_name          = 'Starter',
     features = '[
         "1 Post Per Day",
