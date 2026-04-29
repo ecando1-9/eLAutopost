@@ -38,6 +38,7 @@ interface BillingPlanOption {
     display_name: string;
     price: number;
     amount_paise: number;
+    original_amount_paise?: number | null;
     currency: string;
     billing_period_days: number;
     checkout_description?: string;
@@ -572,9 +573,21 @@ export default function UserDashboard() {
                                     )}
                                     <p className="text-lg font-bold text-slate-900">{plan.display_name}</p>
                                     <p className="mt-1 text-sm text-slate-600">{plan.checkout_description}</p>
-                                    <div className="mt-5 flex items-end gap-1">
-                                        <span className="text-3xl font-bold text-slate-950">₹{(plan.amount_paise / 100).toFixed(0)}</span>
-                                        <span className="pb-1 text-sm font-medium text-slate-500">/month</span>
+                                    <div className="mt-5">
+                                        {/* Crossed-out original price + badge */}
+                                        {plan.original_amount_paise && plan.original_amount_paise > plan.amount_paise && (
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <span className="text-sm text-slate-400 line-through">₹{(plan.original_amount_paise / 100).toFixed(0)}</span>
+                                                <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-bold text-green-700">
+                                                    {Math.round(((plan.original_amount_paise - plan.amount_paise) / plan.original_amount_paise) * 100)}% OFF
+                                                </span>
+                                            </div>
+                                        )}
+                                        {/* Actual price */}
+                                        <div className="flex items-end gap-1">
+                                            <span className="text-3xl font-bold text-slate-950">₹{(plan.amount_paise / 100).toFixed(0)}</span>
+                                            <span className="pb-1 text-sm font-medium text-slate-500">/month</span>
+                                        </div>
                                     </div>
                                     <ul className="mt-5 space-y-2">
                                         {plan.features.map((feature) => (
