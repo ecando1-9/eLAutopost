@@ -81,23 +81,28 @@ class BillingService:
 
     def get_active_plans(self) -> list[Dict[str, Any]]:
         """Load active plan settings, falling back to env defaults."""
-        try:
-            result = supabase_client.admin.table("billing_plan_settings").select(
-                "*"
-            ).eq("is_active", True).order("sort_order").execute()
-            if result.data:
-                plans = result.data
-                active_plan_names = {str(item.get("plan_name") or "").strip().lower() for item in plans}
-                if "starter" in active_plan_names and "pro" in active_plan_names:
-                    plans = [
-                        item
-                        for item in plans
-                        if str(item.get("plan_name") or "").strip().lower() != "monthly"
-                    ]
-                return plans
-        except Exception as e:
-            logger.warning(f"Using env billing plan fallback: {e}")
+        # Try full select first (works when schema is up to date)
+        for select_cols in ["*", "id,plan_name,display_name,amount_paise,currency,billing_period_days,checkout_description,features,sort_order,is_popular,is_active"]:
+            try:
+                result = supabase_client.admin.table("billing_plan_settings").select(
+                    select_cols
+                ).eq("is_active", True).order("sort_order").execute()
+                if result.data:
+                    plans = result.data
+                    active_plan_names = {str(item.get("plan_name") or "").strip().lower() for item in plans}
+                    if "starter" in active_plan_names and "pro" in active_plan_names:
+                        plans = [
+                            item
+                            for item in plans
+                            if str(item.get("plan_name") or "").strip().lower() != "monthly"
+                        ]
+                    return plans
+                break  # Query succeeded but no data — don't retry
+            except Exception as e:
+                logger.warning(f"Billing plan query failed ({select_cols}): {e}")
+                continue  # Try with narrower columns
 
+        logger.warning("Using env billing plan fallback")
         return [self._fallback_plan()]
 
     def get_active_plan(self) -> Dict[str, Any]:
