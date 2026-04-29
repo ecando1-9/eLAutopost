@@ -347,17 +347,21 @@ export default function BillingPage() {
                                 )}
                                 <p className="text-lg font-bold text-slate-900">{plan.display_name}</p>
                                 <p className="mt-1 text-sm text-slate-500">{plan.checkout_description || 'LinkedIn automation subscription'}</p>
-                                <div className="mt-4 flex flex-wrap items-end gap-2">
-                                    <span className="text-4xl font-black text-slate-900">₹{(plan.amount_paise / 100).toFixed(0)}</span>
+                                <div className="mt-4">
+                                    {/* Original (crossed-out) price shown first for anchoring */}
                                     {plan.original_amount_paise && plan.original_amount_paise > plan.amount_paise && (
-                                        <span className="pb-1 text-lg text-slate-400 line-through">₹{(plan.original_amount_paise / 100).toFixed(0)}</span>
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <span className="text-base text-slate-400 line-through">₹{(plan.original_amount_paise / 100).toFixed(0)}</span>
+                                            <span className="rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-bold text-green-700">
+                                                {Math.round(((plan.original_amount_paise - plan.amount_paise) / plan.original_amount_paise) * 100)}% OFF
+                                            </span>
+                                        </div>
                                     )}
-                                    {plan.original_amount_paise && plan.original_amount_paise > plan.amount_paise && (
-                                        <span className="mb-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-bold text-green-700">
-                                            {Math.round(((plan.original_amount_paise - plan.amount_paise) / plan.original_amount_paise) * 100)}% OFF
-                                        </span>
-                                    )}
-                                    <span className="pb-1 text-sm text-slate-500">/ {plan.billing_period_days} days</span>
+                                    {/* Big actual price */}
+                                    <div className="flex items-end gap-2">
+                                        <span className="text-4xl font-black text-slate-900">₹{(plan.amount_paise / 100).toFixed(0)}</span>
+                                        <span className="pb-1 text-sm text-slate-500">/ {plan.billing_period_days} days</span>
+                                    </div>
                                 </div>
                                 {plan.features.length > 0 && (
                                     <ul className="mt-5 space-y-2">
