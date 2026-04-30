@@ -211,28 +211,58 @@ async def update_user_schedule(
                 schedule=schedule,
             )
 
+        generation_stats = None
         if body.is_active and body.auto_topic:
             try:
-                import asyncio
-                asyncio.create_task(auto_generator_worker.process_user_auto_generation(user_id))
+                generation_stats = await auto_generator_worker.process_user_auto_generation(
+                    user_id=user_id,
+                    schedule=schedule,
+                    slot_limit=1,
+                )
+
+                if generation_stats.get("remaining_slots", 0) > 0:
+                    import asyncio
+                    asyncio.create_task(
+                        auto_generator_worker.process_user_auto_generation(
+                            user_id=user_id,
+                            schedule=schedule,
+                        )
+                    )
             except Exception as e:
                 logger.error(f"Failed to queue auto-generation task: {e}")
 
+        message = "Settings updated successfully."
+        if body.is_active and body.auto_topic:
+            message = "Settings saved."
+            if rescheduled_count:
+                message += (
+                    f" {rescheduled_count} future post"
+                    f"{'' if rescheduled_count == 1 else 's'} moved to the new schedule."
+                )
+
+            if generation_stats:
+                if generation_stats.get("generated", 0) > 0:
+                    message += " The next scheduled post is ready for review."
+                    if generation_stats.get("remaining_slots", 0) > 0:
+                        message += " More upcoming posts are being prepared in the background."
+                elif generation_stats.get("past_today_slots", 0) > 0 and generation_stats.get("future_today_slots", 0) == 0:
+                    message += " Today's earlier slot time has already passed, so it will not be generated."
+                    if generation_stats.get("future_tomorrow_slots", 0) > 0:
+                        message += " Tomorrow's posts are being prepared next."
+                elif generation_stats.get("future_today_slots", 0) > 0:
+                    next_slot_label = generation_stats.get("next_slot_label") or "the next slot"
+                    message += f" The next post will be generated for {next_slot_label}."
+                elif generation_stats.get("future_tomorrow_slots", 0) > 0:
+                    message += " No valid slots are left for today. Tomorrow's posts are being prepared."
+                else:
+                    message += " No new future slot was available to generate right now."
+
         return {
             "success": True,
-            "message": (
-                "Schedule updated successfully. "
-                + (
-                    f"{rescheduled_count} future post"
-                    f"{'' if rescheduled_count == 1 else 's'} moved to the new schedule. "
-                    if rescheduled_count
-                    else ""
-                )
-                + "Auto-generation has been queued for your upcoming slots."
-                if body.is_active and body.auto_topic
-                else "Schedule updated successfully"
-            ),
-            "schedule": schedule
+            "message": message,
+            "schedule": schedule,
+            "generation": generation_stats,
+            "rescheduled_count": rescheduled_count,
         }
 
     except Exception as e:

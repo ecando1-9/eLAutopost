@@ -84,6 +84,21 @@ interface ScheduleResponse {
     auto_topic?: boolean;
 }
 
+interface ScheduleSavePayload {
+    success?: boolean;
+    message?: string;
+    schedule?: ScheduleResponse | null;
+    generation?: {
+        generated?: number;
+        past_today_slots?: number;
+        future_today_slots?: number;
+        future_tomorrow_slots?: number;
+        remaining_slots?: number;
+        next_slot_label?: string | null;
+    } | null;
+    rescheduled_count?: number;
+}
+
 interface SetupCheck {
     label: string;
     done: boolean;
@@ -671,7 +686,7 @@ export default function SettingsPage() {
                 throw new Error(await readErrorMessage(scheduleRes));
             }
 
-            const schedulePayload = await scheduleRes.json().catch(() => null);
+            const schedulePayload: ScheduleSavePayload | null = await scheduleRes.json().catch(() => null);
 
             const localPreferences: LocalPreferences = {
                 defaultGoal,
@@ -794,16 +809,16 @@ export default function SettingsPage() {
                 </section>
 
                 {successMessage && (
-                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 flex items-center gap-2">
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 flex items-start gap-2">
                         <CheckCircle2 className="h-4 w-4" />
-                        {successMessage}
+                        <span className="whitespace-pre-line">{successMessage}</span>
                     </div>
                 )}
 
                 {errorMessage && (
-                    <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 flex items-center gap-2">
+                    <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 flex items-start gap-2">
                         <AlertCircle className="h-4 w-4" />
-                        {errorMessage}
+                        <span className="whitespace-pre-line">{errorMessage}</span>
                     </div>
                 )}
 

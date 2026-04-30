@@ -154,6 +154,7 @@ export default function ContentCalendarPage() {
     const [selectedDay, setSelectedDay] = useState<string>(toDateKey(new Date()));
     const [settingsMeta, setSettingsMeta] = useState<any>(null);
     const [scheduleMeta, setScheduleMeta] = useState<any>(null);
+    const [infoMessage, setInfoMessage] = useState('');
     const autoGenerateAttemptedRef = useRef<Set<string>>(new Set());
     
     // Internal state for custom manual generation
@@ -313,6 +314,10 @@ export default function ContentCalendarPage() {
                 });
 
                 if (response.ok) {
+                    const payload = await response.json().catch(() => null);
+                    if (payload?.message) {
+                        setInfoMessage(payload.message);
+                    }
                     await loadQueue({ keepLoading: false });
                 } else {
                     autoGenerateAttemptedRef.current.delete(attemptKey);
@@ -409,6 +414,13 @@ export default function ContentCalendarPage() {
                                 </button>
                             </div>
 
+                            {infoMessage && (
+                                <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 flex items-start gap-2">
+                                    <CheckCircle2 className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                                    <span>{infoMessage}</span>
+                                </div>
+                            )}
+
                             {scheduleMeta?.is_active && missingTimelineSlots.length > 0 && selectedDayPosts.length === 0 && (
                                 <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800 flex items-start gap-2">
                                     <Sparkles className="h-4 w-4 mt-0.5 flex-shrink-0" />
@@ -445,7 +457,7 @@ export default function ContentCalendarPage() {
                                     <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-amber-800 text-sm flex items-start gap-2">
                                         <AlertCircle className="h-4 w-4 mt-0.5" />
                                         {selectedDayHasPastCutoff
-                                            ? 'Today only had past schedule times left, so no new slot is shown. If you enable auto-post later in the day, only the remaining future slot will appear and generate.'
+                                            ? 'This slot cannot be posted because the scheduled time has already passed for today. Only the next valid future slot can be generated now.'
                                             : 'Your auto-generation schedule is not active for this specific day. Update your schedule in Settings.'}
                                     </div>
                                 ) : (

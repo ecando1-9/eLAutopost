@@ -34,6 +34,107 @@ _DAYS_AHEAD_MAX = 2
 class AutoGeneratorWorker:
     """Generate scheduled content that follows each user's saved settings."""
 
+    def _parse_schedule_times(
+        self,
+        raw_time_value: Any,
+        max_posts_per_day: int,
+    ) -> List[time]:
+        """Parse, dedupe, and sort saved schedule times."""
+        parsed_times: List[time] = []
+        if isinstance(raw_time_value, str):
+            for raw_entry in raw_time_value.split(","):
+                candidate = raw_entry.strip()
+                if not candidate:
+                    continue
+
+                parts = candidate.split(":")
+                try:
+                    parsed_time = time(
+                        hour=int(parts[0]),
+                        minute=int(parts[1]) if len(parts) > 1 else 0,
+                    )
+                except (ValueError, IndexError):
+                    continue
+
+                if all(existing != parsed_time for existing in parsed_times):
+                    parsed_times.append(parsed_time)
+
+        if not parsed_times:
+            parsed_times = [time(9, 0)]
+
+        parsed_times.sort()
+        return parsed_times[:max_posts_per_day]
+
+    def _summarize_slot_window(
+        self,
+        schedule: Dict[str, Any],
+        max_posts_per_day: int,
+    ) -> Dict[str, Any]:
+        """Describe past and future slots so the UI can explain what happened."""
+        try:
+            user_tz = pytz.timezone(schedule.get("timezone", "Asia/Kolkata"))
+        except Exception:
+            user_tz = pytz.timezone("Asia/Kolkata")
+
+        now_utc = utc_now()
+        now_local = now_utc.astimezone(user_tz)
+        parsed_times = self._parse_schedule_times(
+            schedule.get("time_of_day", "09:00"),
+            max_posts_per_day,
+        )
+
+        day_map = {
+            "MON": 0,
+            "TUE": 1,
+            "WED": 2,
+            "THU": 3,
+            "FRI": 4,
+            "SAT": 5,
+            "SUN": 6,
+        }
+        schedule_days = [
+            str(day).strip().upper()
+            for day in (schedule.get("days_of_week", []) or [])
+            if str(day).strip()
+        ]
+        scheduled_weekdays = {day_map[day] for day in schedule_days if day in day_map}
+
+        summary = {
+            "past_today_slots": 0,
+            "future_today_slots": 0,
+            "future_tomorrow_slots": 0,
+            "next_slot_label": None,
+        }
+        if not scheduled_weekdays:
+            return summary
+
+        for day_offset in range(_DAYS_AHEAD_MAX):
+            candidate_date = now_local.date() + timedelta(days=day_offset)
+            if candidate_date.weekday() not in scheduled_weekdays:
+                continue
+
+            for slot_time in parsed_times:
+                slot_naive = datetime.combine(candidate_date, slot_time)
+                try:
+                    slot_local = user_tz.localize(slot_naive, is_dst=None)
+                except Exception:
+                    slot_local = user_tz.localize(slot_naive, is_dst=False)
+
+                slot_utc = slot_local.astimezone(pytz.UTC)
+                if day_offset == 0 and slot_utc <= now_utc + timedelta(minutes=5):
+                    summary["past_today_slots"] += 1
+                    continue
+
+                if summary["next_slot_label"] is None:
+                    summary["next_slot_label"] = slot_local.strftime("%I:%M %p").lstrip("0")
+
+                if day_offset == 0:
+                    summary["future_today_slots"] += 1
+                elif day_offset == 1:
+                    summary["future_tomorrow_slots"] += 1
+
+        return summary
+
     async def process_auto_generation(self) -> Dict[str, int]:
         """Process all active schedules that need content generated."""
         stats = {"generated": 0, "skipped": 0, "failed": 0}
@@ -71,9 +172,21 @@ class AutoGeneratorWorker:
         self,
         user_id: str,
         schedule: Dict[str, Any] | None = None,
+        slot_limit: int | None = None,
     ) -> Dict[str, int]:
         """Generate upcoming scheduled posts for a single user."""
-        stats = {"generated": 0, "skipped": 0, "failed": 0}
+        stats = {
+            "generated": 0,
+            "skipped": 0,
+            "failed": 0,
+            "today_generated": 0,
+            "tomorrow_generated": 0,
+            "past_today_slots": 0,
+            "future_today_slots": 0,
+            "future_tomorrow_slots": 0,
+            "remaining_slots": 0,
+            "next_slot_label": None,
+        }
 
         try:
             if schedule is None:
@@ -95,6 +208,12 @@ class AutoGeneratorWorker:
                 return stats
 
             user_settings = await load_user_automation_settings(user_id)
+            stats.update(
+                self._summarize_slot_window(
+                    schedule=schedule,
+                    max_posts_per_day=user_settings.get("max_posts_per_day", 1),
+                )
+            )
             target_variants = build_target_variants(user_settings)
             desired_slots = self._calculate_all_slots(
                 schedule=schedule,
@@ -153,7 +272,16 @@ class AutoGeneratorWorker:
                 stats["skipped"] += 1
                 return stats
 
+            if slot_limit is not None and slot_limit > 0 and len(slot_plans) > slot_limit:
+                stats["remaining_slots"] = len(slot_plans) - slot_limit
+                slot_plans = slot_plans[:slot_limit]
+
             categories = schedule.get("categories") or []
+            try:
+                user_tz = pytz.timezone(schedule.get("timezone", "Asia/Kolkata"))
+            except Exception:
+                user_tz = pytz.timezone("Asia/Kolkata")
+            today_local = utc_now().astimezone(user_tz).date()
             for index, slot_plan in enumerate(slot_plans):
                 slot_time = slot_plan["slot_time"]
                 variants = slot_plan["variants"]
@@ -203,6 +331,11 @@ class AutoGeneratorWorker:
                             f"at {slot_time.isoformat()} target={variant['target']}"
                         )
                         stats["generated"] += 1
+                        slot_local_date = slot_time.astimezone(user_tz).date()
+                        if slot_local_date == today_local:
+                            stats["today_generated"] += 1
+                        else:
+                            stats["tomorrow_generated"] += 1
 
                 except Exception as slot_err:
                     logger.error(
@@ -286,30 +419,7 @@ class AutoGeneratorWorker:
             user_tz = pytz.timezone("Asia/Kolkata")
 
         raw_time_value = schedule.get("time_of_day", "09:00")
-        parsed_times: List[time] = []
-        if isinstance(raw_time_value, str):
-            for raw_entry in raw_time_value.split(","):
-                candidate = raw_entry.strip()
-                if not candidate:
-                    continue
-
-                parts = candidate.split(":")
-                try:
-                    parsed_time = time(
-                        hour=int(parts[0]),
-                        minute=int(parts[1]) if len(parts) > 1 else 0,
-                    )
-                except (ValueError, IndexError):
-                    continue
-
-                if all(existing != parsed_time for existing in parsed_times):
-                    parsed_times.append(parsed_time)
-
-        if not parsed_times:
-            parsed_times = [time(9, 0)]
-
-        parsed_times.sort()
-        parsed_times = parsed_times[:max_posts_per_day]
+        parsed_times = self._parse_schedule_times(raw_time_value, max_posts_per_day)
 
         day_map = {
             "MON": 0,
