@@ -7,7 +7,10 @@ import {
     CreditCard,
     TrendingUp,
     AlertTriangle,
-    ArrowUpRight
+    ArrowUpRight,
+    Activity,
+    IndianRupee,
+    RefreshCw
 } from 'lucide-react';
 
 export default function DashboardPage() {
@@ -15,25 +18,28 @@ export default function DashboardPage() {
     const [revenue, setRevenue] = useState<RevenueAnalytics[]>([]);
     const [usage, setUsage] = useState<UsageAnalytics[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+    const fetchStats = async () => {
+        setIsLoading(true);
+        try {
+            const [statsData, revenueData, usageData] = await Promise.all([
+                adminService.getDashboardStats(),
+                adminService.getRevenueAnalytics(),
+                adminService.getUsageAnalytics(),
+            ]);
+            setStats(statsData);
+            setRevenue(revenueData.slice().reverse().slice(-6));
+            setUsage(usageData.slice().reverse().slice(-14));
+            setLastUpdated(new Date());
+        } catch (error) {
+            console.error('Failed to fetch dashboard stats:', error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
     useEffect(() => {
-        const fetchStats = async () => {
-            try {
-                const [statsData, revenueData, usageData] = await Promise.all([
-                    adminService.getDashboardStats(),
-                    adminService.getRevenueAnalytics(),
-                    adminService.getUsageAnalytics(),
-                ]);
-                setStats(statsData);
-                setRevenue(revenueData.slice().reverse().slice(-6));
-                setUsage(usageData.slice().reverse().slice(-14));
-            } catch (error) {
-                console.error('Failed to fetch dashboard stats:', error);
-            } finally {
-                setIsLoading(false);
-            }
-        };
-
         fetchStats();
     }, []);
 
@@ -60,15 +66,17 @@ export default function DashboardPage() {
             icon: CreditCard,
             bgColor: 'bg-green-50',
             textColor: 'text-green-600',
-            trend: `+${stats.new_subscribers_this_month} this month`
+            trend: `+${stats.new_subscribers_this_month} this month`,
+            detail: 'Paid accounts only'
         },
         {
-            label: 'Monthly Recurring Revenue',
-            value: `INR ${stats.mrr.toLocaleString()}`,
-            icon: TrendingUp,
+            label: 'Active MRR',
+            value: `INR ${Number(stats.mrr || 0).toLocaleString()}`,
+            icon: IndianRupee,
             bgColor: 'bg-indigo-50',
             textColor: 'text-indigo-600',
-            trend: 'Based on active plans'
+            trend: 'Sum of active subscription prices',
+            detail: 'Uses each user paid price'
         },
         {
             label: 'Trial Users',
@@ -76,18 +84,39 @@ export default function DashboardPage() {
             icon: AlertTriangle,
             bgColor: 'bg-yellow-50',
             textColor: 'text-yellow-600',
-            trend: `${stats.expired_trials} expired`
+            trend: `${stats.expired_trials} expired`,
+            detail: 'Active trials only'
         }
     ];
 
     const maxRevenue = Math.max(...revenue.map((row) => Number(row.revenue) || 0), 1);
     const maxPosts = Math.max(...usage.map((row) => Number(row.total_posts) || 0), 1);
+    const totalRevenue = revenue.reduce((sum, row) => sum + (Number(row.revenue) || 0), 0);
+    const totalPosts = usage.reduce((sum, row) => sum + (Number(row.total_posts) || 0), 0);
+    const totalPublished = usage.reduce((sum, row) => sum + (Number(row.total_linkedin_posts) || 0), 0);
 
     return (
         <div className="space-y-6">
-            <div>
-                <h2 className="text-2xl font-bold text-gray-900">Dashboard Overview</h2>
-                <p className="text-gray-500">Users, subscriptions, revenue, and product activity</p>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                    <h2 className="text-2xl font-bold text-gray-900">Dashboard Overview</h2>
+                    <p className="text-gray-500">Live users, billing, revenue, and product activity</p>
+                </div>
+                <div className="flex items-center gap-3">
+                    {lastUpdated && (
+                        <span className="text-xs font-medium text-gray-400">
+                            Updated {lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                    )}
+                    <button
+                        onClick={fetchStats}
+                        disabled={isLoading}
+                        className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-60"
+                    >
+                        <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+                        Refresh
+                    </button>
+                </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -99,6 +128,7 @@ export default function DashboardPage() {
                                 <div>
                                     <p className="text-sm font-medium text-gray-500">{stat.label}</p>
                                     <p className="text-2xl font-bold text-gray-900 mt-1">{stat.value}</p>
+                                    {'detail' in stat && <p className="mt-1 text-xs text-gray-400">{stat.detail}</p>}
                                 </div>
                                 <div className={`p-3 rounded-lg ${stat.bgColor}`}>
                                     <Icon className={`h-6 w-6 ${stat.textColor}`} />
@@ -115,7 +145,7 @@ export default function DashboardPage() {
                 })}
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                     <div className="flex items-center justify-between">
                         <div>
@@ -149,15 +179,29 @@ export default function DashboardPage() {
                             })
                         )}
                     </div>
+                    <div className="mt-4 rounded-lg bg-indigo-50 px-4 py-3">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-indigo-500">Visible period revenue</p>
+                        <p className="mt-1 text-xl font-bold text-indigo-950">INR {totalRevenue.toLocaleString()}</p>
+                    </div>
                 </div>
 
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 lg:col-span-2">
                     <div className="flex items-center justify-between">
                         <div>
                             <h3 className="text-base font-semibold text-gray-900">Product Activity</h3>
-                            <p className="text-sm text-gray-500">Generated posts by active day</p>
+                            <p className="text-sm text-gray-500">Generated and posted content by day</p>
                         </div>
-                        <Users className="h-5 w-5 text-blue-500" />
+                        <Activity className="h-5 w-5 text-blue-500" />
+                    </div>
+                    <div className="mt-5 grid grid-cols-2 gap-3">
+                        <div className="rounded-lg bg-blue-50 px-4 py-3">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-blue-500">Generated</p>
+                            <p className="mt-1 text-xl font-bold text-blue-950">{totalPosts}</p>
+                        </div>
+                        <div className="rounded-lg bg-emerald-50 px-4 py-3">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-500">Published</p>
+                            <p className="mt-1 text-xl font-bold text-emerald-950">{totalPublished}</p>
+                        </div>
                     </div>
                     <div className="mt-6 space-y-4">
                         {usage.length === 0 ? (

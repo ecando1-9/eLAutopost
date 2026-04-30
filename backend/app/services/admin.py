@@ -1073,9 +1073,62 @@ class AdminService:
             Dashboard stats (total users, MRR, conversions, etc.)
         """
         try:
-            result = supabase_client.admin.from_("admin_dashboard_stats").select("*").single().execute()
-            
-            return result.data or {}
+            now = utc_now()
+            month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+            users_result = supabase_client.admin.table("users").select(
+                "id,created_at", count="exact"
+            ).execute()
+            total_users = self._count_rows(users_result)
+            new_users_this_month = len([
+                user for user in (users_result.data or [])
+                if parse_datetime_utc(user.get("created_at"))
+                and parse_datetime_utc(user.get("created_at")) >= month_start
+            ])
+
+            subs_result = supabase_client.admin.table("subscriptions").select(
+                "status,price,trial_end,subscription_start,renewal_date"
+            ).execute()
+            subscriptions = subs_result.data or []
+
+            active_subs = [
+                sub for sub in subscriptions
+                if str(sub.get("status") or "").lower() == "active"
+            ]
+            trial_subs = [
+                sub for sub in subscriptions
+                if str(sub.get("status") or "").lower() == "trial"
+                and (
+                    not parse_datetime_utc(sub.get("trial_end"))
+                    or parse_datetime_utc(sub.get("trial_end")) > now
+                )
+            ]
+            expired_trials = [
+                sub for sub in subscriptions
+                if str(sub.get("status") or "").lower() == "expired"
+            ]
+            blocked_users = [
+                sub for sub in subscriptions
+                if str(sub.get("status") or "").lower() == "blocked"
+            ]
+
+            mrr = sum(float(sub.get("price") or 0) for sub in active_subs)
+            new_subscribers_this_month = len([
+                sub for sub in active_subs
+                if parse_datetime_utc(sub.get("subscription_start"))
+                and parse_datetime_utc(sub.get("subscription_start")) >= month_start
+            ])
+
+            return {
+                "total_users": total_users,
+                "active_subscribers": len(active_subs),
+                "trial_users": len(trial_subs),
+                "expired_trials": len(expired_trials),
+                "blocked_users": len(blocked_users),
+                "mrr": mrr,
+                "new_users_this_month": new_users_this_month,
+                "new_subscribers_this_month": new_subscribers_this_month,
+            }
             
         except Exception as e:
             logger.error(f"Failed to get dashboard stats: {e}")
@@ -1089,9 +1142,53 @@ class AdminService:
             Monthly revenue data
         """
         try:
-            result = supabase_client.admin.from_("admin_revenue_analytics").select("*").execute()
-            
-            return result.data or []
+            try:
+                result = supabase_client.admin.table("billing_payments").select(
+                    "status,amount,amount_paise,final_amount_paise,paid_at,verified_at,created_at"
+                ).eq("status", "captured").execute()
+            except Exception:
+                result = supabase_client.admin.table("billing_payments").select(
+                    "status,amount,amount_paise,paid_at,verified_at,created_at"
+                ).eq("status", "captured").execute()
+
+            monthly: Dict[str, Dict[str, Any]] = {}
+            for payment in (result.data or []):
+                paid_at = (
+                    parse_datetime_utc(payment.get("paid_at"))
+                    or parse_datetime_utc(payment.get("verified_at"))
+                    or parse_datetime_utc(payment.get("created_at"))
+                )
+                if not paid_at:
+                    continue
+
+                month_start = paid_at.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                key = month_start.date().isoformat()
+                amount_paise = payment.get("final_amount_paise")
+                if amount_paise is None:
+                    amount_paise = payment.get("amount_paise")
+                amount = (
+                    float(amount_paise or 0) / 100
+                    if amount_paise is not None
+                    else float(payment.get("amount") or 0)
+                )
+
+                bucket = monthly.setdefault(
+                    key,
+                    {
+                        "month": month_start.isoformat(),
+                        "new_subscriptions": 0,
+                        "revenue": 0.0,
+                        "mrr_added": 0.0,
+                    },
+                )
+                bucket["new_subscriptions"] += 1
+                bucket["revenue"] += amount
+                bucket["mrr_added"] += amount
+
+            return [
+                monthly[key]
+                for key in sorted(monthly.keys())
+            ]
             
         except Exception as e:
             logger.error(f"Failed to get revenue analytics: {e}")
@@ -1108,9 +1205,41 @@ class AdminService:
             Daily usage data
         """
         try:
-            result = supabase_client.admin.from_("admin_usage_analytics").select("*").limit(days).execute()
-            
-            return result.data or []
+            since = utc_now() - timedelta(days=days)
+            posts_result = supabase_client.admin.table("posts").select(
+                "user_id,status,created_at,posted_at"
+            ).gte("created_at", since.isoformat()).execute()
+
+            daily: Dict[str, Dict[str, Any]] = {}
+            active_users_by_day: Dict[str, set] = {}
+            for post in (posts_result.data or []):
+                created_at = parse_datetime_utc(post.get("created_at"))
+                if not created_at:
+                    continue
+                key = created_at.date().isoformat()
+                bucket = daily.setdefault(
+                    key,
+                    {
+                        "date": created_at.replace(hour=0, minute=0, second=0, microsecond=0).isoformat(),
+                        "active_users": 0,
+                        "total_posts": 0,
+                        "total_images": 0,
+                        "total_linkedin_posts": 0,
+                        "total_api_calls": 0,
+                    },
+                )
+                bucket["total_posts"] += 1
+                active_users_by_day.setdefault(key, set()).add(post.get("user_id"))
+                if post.get("status") == "posted":
+                    bucket["total_linkedin_posts"] += 1
+
+            for key, users in active_users_by_day.items():
+                daily[key]["active_users"] = len({uid for uid in users if uid})
+
+            return [
+                daily[key]
+                for key in sorted(daily.keys(), reverse=True)
+            ][:days]
             
         except Exception as e:
             logger.error(f"Failed to get usage analytics: {e}")
