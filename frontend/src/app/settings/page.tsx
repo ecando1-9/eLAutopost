@@ -727,15 +727,15 @@ export default function SettingsPage() {
             description="Set LinkedIn targets, schedule rules, and AI defaults in one place."
             hidePageHeader
         >
-            <div className="mx-auto max-w-7xl space-y-6">
-                <section className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.14),transparent_32%),radial-gradient(circle_at_top_right,rgba(99,102,241,0.12),transparent_38%),linear-gradient(180deg,#ffffff,#f8fafc)] p-6 shadow-sm sm:p-8">
+            <div className="mx-auto max-w-7xl space-y-4 px-3 pb-28 sm:space-y-6 sm:px-0 sm:pb-0">
+                <section className="relative overflow-hidden rounded-[24px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.14),transparent_32%),radial-gradient(circle_at_top_right,rgba(99,102,241,0.12),transparent_38%),linear-gradient(180deg,#ffffff,#f8fafc)] p-4 shadow-sm sm:rounded-[28px] sm:p-8">
                     <div className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_320px] xl:items-start">
                         <div>
                             <p className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-800 backdrop-blur">
                                 <ShieldCheck className="h-3.5 w-3.5" />
                                 System Setup
                             </p>
-                            <h1 className="mt-4 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
+                            <h1 className="mt-3 text-[30px] font-black tracking-tight text-slate-950 sm:mt-4 sm:text-4xl">
                                 Automation Settings
                             </h1>
                             <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base">
@@ -743,8 +743,8 @@ export default function SettingsPage() {
                                 calendar, and auto-post all follow the same plan.
                             </p>
 
-                            <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                                <div className="rounded-2xl border border-white/80 bg-white/85 p-4 shadow-sm backdrop-blur">
+                            <div className="mt-5 grid grid-cols-2 gap-2 sm:mt-6 sm:gap-3 xl:grid-cols-4">
+                                <div className="rounded-2xl border border-white/80 bg-white/85 p-3 shadow-sm backdrop-blur sm:p-4">
                                     <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Connection</p>
                                     <p className="mt-2 text-sm font-bold text-slate-900">
                                         {isLinkedInConnected ? 'LinkedIn ready' : 'Needs connection'}
@@ -753,17 +753,17 @@ export default function SettingsPage() {
                                         {isLinkedInConnected ? (linkedinProfile?.name || 'Profile connected') : 'Connect before auto posting'}
                                     </p>
                                 </div>
-                                <div className="rounded-2xl border border-white/80 bg-white/85 p-4 shadow-sm backdrop-blur">
+                                <div className="rounded-2xl border border-white/80 bg-white/85 p-3 shadow-sm backdrop-blur sm:p-4">
                                     <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Cadence</p>
                                     <p className="mt-2 text-sm font-bold text-slate-900">{cadenceSummary}</p>
                                     <p className="mt-1 text-xs text-slate-500">{scheduleSummary}</p>
                                 </div>
-                                <div className="rounded-2xl border border-white/80 bg-white/85 p-4 shadow-sm backdrop-blur">
+                                <div className="rounded-2xl border border-white/80 bg-white/85 p-3 shadow-sm backdrop-blur sm:p-4">
                                     <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Audience</p>
                                     <p className="mt-2 text-sm font-bold text-slate-900">{defaultAudience}</p>
                                     <p className="mt-1 text-xs text-slate-500">{defaultGoal} goal with {defaultTone} tone</p>
                                 </div>
-                                <div className="rounded-2xl border border-white/80 bg-white/85 p-4 shadow-sm backdrop-blur">
+                                <div className="rounded-2xl border border-white/80 bg-white/85 p-3 shadow-sm backdrop-blur sm:p-4">
                                     <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Target</p>
                                     <p className="mt-2 text-sm font-bold text-slate-900">{postingTargetLabel}</p>
                                     <p className="mt-1 text-xs text-slate-500">
@@ -773,11 +773,11 @@ export default function SettingsPage() {
                             </div>
                         </div>
 
-                        <div className="rounded-[24px] bg-slate-950 p-5 text-white shadow-[0_18px_50px_-28px_rgba(15,23,42,0.9)]">
+                        <div className="rounded-[22px] bg-slate-950 p-4 text-white shadow-[0_18px_50px_-28px_rgba(15,23,42,0.9)] sm:rounded-[24px] sm:p-5">
                             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Setup Progress</p>
                             <div className="mt-3 flex items-end justify-between gap-4">
                                 <div>
-                                    <p className="text-4xl font-black tracking-tight">{setupScore}/{setupChecks.length}</p>
+                                    <p className="text-3xl font-black tracking-tight sm:text-4xl">{setupScore}/{setupChecks.length}</p>
                                     <p className="mt-1 text-sm text-slate-300">
                                         {setupComplete ? 'Everything needed for automation is in place.' : 'Finish the remaining steps to make auto-post reliable.'}
                                     </p>
@@ -823,7 +823,7 @@ export default function SettingsPage() {
                 )}
 
                 <div className="grid gap-6 xl:grid-cols-[minmax(0,1.22fr)_minmax(280px,0.78fr)]">
-                    <section id="linkedin-workspace" className="scroll-mt-24 rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm sm:p-7">
+                    <section id="linkedin-workspace" className="scroll-mt-24 rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm sm:rounded-[28px] sm:p-7">
                         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                             <div className="flex items-start gap-4">
                                 <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-100 text-sky-700">
@@ -880,7 +880,7 @@ export default function SettingsPage() {
                         </div>
 
                         <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1.02fr)_minmax(260px,0.98fr)]">
-                            <div className={`rounded-3xl border p-4 ${
+                            <div className={`rounded-[22px] border p-4 sm:rounded-3xl ${
                                 isLinkedInConnected
                                     ? 'border-emerald-200 bg-emerald-50/70'
                                     : 'border-slate-200 bg-slate-50'
@@ -905,7 +905,7 @@ export default function SettingsPage() {
                                 </div>
                             </div>
 
-                            <div className={`rounded-3xl border p-4 ${
+                            <div className={`rounded-[22px] border p-4 sm:rounded-3xl ${
                                 hasOrganizationPostingAccess
                                     ? 'border-sky-200 bg-sky-50/80'
                                     : 'border-amber-200 bg-amber-50/80'
@@ -932,7 +932,7 @@ export default function SettingsPage() {
                         </div>
 
                         {isLinkedInConnected && (
-                            <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50/90 p-4">
+                            <div className="mt-5 rounded-[22px] border border-slate-200 bg-slate-50/90 p-4 sm:rounded-3xl">
                                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                     <div>
                                         <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Managed Pages</p>
@@ -1065,7 +1065,7 @@ export default function SettingsPage() {
                         </div>
 
                         <div className="mt-6 space-y-4">
-                            <div className="rounded-3xl border border-slate-200 bg-slate-50/90 p-4">
+                        <div className="rounded-[22px] border border-slate-200 bg-slate-50/90 p-4 sm:rounded-3xl">
                                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                                     <div>
                                         <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Automation Switch</p>
@@ -1076,7 +1076,7 @@ export default function SettingsPage() {
                                 </div>
                             </div>
 
-                            <div className="rounded-3xl border border-slate-200 bg-white p-4">
+                            <div className="rounded-[22px] border border-slate-200 bg-white p-4 sm:rounded-3xl">
                                 <div className="flex items-start gap-3">
                                     <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
                                         <Clock3 className="h-5 w-5" />
@@ -1125,7 +1125,7 @@ export default function SettingsPage() {
                                     </select>
                                 </div>
 
-                                <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50/90 p-4">
+                                <div className="mt-5 rounded-[22px] border border-slate-200 bg-slate-50/90 p-4 sm:rounded-3xl">
                                     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                                         <div>
                                             <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Daily schedule</p>
@@ -1179,7 +1179,7 @@ export default function SettingsPage() {
                                 </div>
                             </div>
 
-                            <div className="rounded-3xl border border-slate-200 bg-white p-4">
+                            <div className="rounded-[22px] border border-slate-200 bg-white p-4 sm:rounded-3xl">
                                 <div className="flex items-start gap-3">
                                     <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-100 text-sky-700">
                                         <Sparkles className="h-5 w-5" />
@@ -1222,7 +1222,7 @@ export default function SettingsPage() {
                                     </span>
                                 </div>
 
-                                <div className="mt-4 rounded-3xl border border-slate-200 bg-slate-50/80 p-4">
+                                <div className="mt-4 rounded-[22px] border border-slate-200 bg-slate-50/80 p-4 sm:rounded-3xl">
                                     <p className="text-sm font-semibold text-slate-900">Add custom category</p>
                                     <p className="mt-1 text-sm text-slate-600">Add a topic lane that matches your niche or audience.</p>
                                     <div className="mt-3 flex flex-col gap-2 sm:flex-row">
@@ -1273,13 +1273,13 @@ export default function SettingsPage() {
                                     These defaults shape tone, audience, format, and destination whenever the app generates content automatically.
                                 </p>
                             </div>
-                            <span className="inline-flex h-fit rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
+                            <span className="inline-flex h-fit w-fit rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
                                 {defaultTone} tone
                             </span>
                         </div>
 
                         <div className="mt-6 space-y-4">
-                            <div className="rounded-3xl border border-slate-200 bg-white p-4">
+                            <div className="rounded-[22px] border border-slate-200 bg-white p-4 sm:rounded-3xl">
                                 <div className="flex items-start gap-3">
                                     <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-700">
                                         <Bot className="h-5 w-5" />
@@ -1364,9 +1364,9 @@ export default function SettingsPage() {
                                 </div>
                             </div>
 
-                            <div className="rounded-3xl border border-slate-200 bg-[linear-gradient(135deg,rgba(238,242,255,0.95),rgba(248,250,252,1))] p-4">
-                                <div className="flex items-center justify-between gap-4">
-                                    <div className="pr-8">
+                            <div className="rounded-[22px] border border-slate-200 bg-[linear-gradient(135deg,rgba(238,242,255,0.95),rgba(248,250,252,1))] p-4 sm:rounded-3xl">
+                                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                                    <div className="pr-0 sm:pr-8">
                                         <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-indigo-700">Reach Optimizer</p>
                                         <p className="mt-1 text-lg font-bold text-slate-900">Maximize formatting reach</p>
                                         <p className="mt-2 text-sm leading-6 text-slate-600">
@@ -1377,7 +1377,7 @@ export default function SettingsPage() {
                                 </div>
                             </div>
 
-                            <div className="rounded-3xl border border-slate-200 bg-white p-4">
+                            <div className="rounded-[22px] border border-slate-200 bg-white p-4 sm:rounded-3xl">
                                 <div className="flex items-start gap-3">
                                     <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-100 text-slate-700">
                                         <Linkedin className="h-5 w-5" />
@@ -1449,7 +1449,7 @@ export default function SettingsPage() {
                                 )}
                             </div>
 
-                            <div className="rounded-3xl border border-slate-200 bg-white p-4">
+                            <div className="rounded-[22px] border border-slate-200 bg-white p-4 sm:rounded-3xl">
                                 <div className="flex items-start gap-3">
                                     <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-700">
                                         <Sparkles className="h-5 w-5" />
@@ -1477,8 +1477,8 @@ export default function SettingsPage() {
                                     ))}
                                 </div>
 
-                                <div className="mt-4 flex items-center justify-between rounded-3xl border border-slate-200 bg-slate-50/80 p-4">
-                                    <div className="pr-4">
+                                <div className="mt-4 flex flex-col gap-4 rounded-[22px] border border-slate-200 bg-slate-50/80 p-4 sm:flex-row sm:items-center sm:justify-between sm:rounded-3xl">
+                                    <div className="pr-0 sm:pr-4">
                                         <p className="text-sm font-semibold text-slate-900">Email notifications</p>
                                         <p className="mt-1 text-sm text-slate-600">Receive important automation and posting alerts.</p>
                                     </div>
@@ -1488,7 +1488,7 @@ export default function SettingsPage() {
                                     />
                                 </div>
 
-                                <div className="mt-4 rounded-3xl bg-slate-100 p-4">
+                                <div className="mt-4 rounded-[22px] bg-slate-100 p-4 sm:rounded-3xl">
                                     <div className="flex items-start gap-3">
                                         <CalendarDays className="mt-0.5 h-4 w-4 text-slate-600" />
                                         <p className="text-sm leading-6 text-slate-600">
@@ -1501,18 +1501,18 @@ export default function SettingsPage() {
                     </section>
                 </div>
 
-                <div className="sticky bottom-4 mt-6">
-                    <div className="flex flex-col gap-4 rounded-[24px] border border-slate-200 bg-white/95 p-4 shadow-[0_20px_55px_-30px_rgba(15,23,42,0.5)] backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+                <div className="sticky bottom-0 z-20 -mx-3 mt-6 sm:bottom-4 sm:mx-0">
+                    <div className="flex flex-col gap-3 rounded-t-[24px] border-x border-t border-slate-200 bg-white/98 px-4 pb-[calc(env(safe-area-inset-bottom)+14px)] pt-4 shadow-[0_-16px_35px_-24px_rgba(15,23,42,0.35)] backdrop-blur sm:flex-row sm:items-center sm:justify-between sm:rounded-[24px] sm:border sm:bg-white/95 sm:p-4 sm:shadow-[0_20px_55px_-30px_rgba(15,23,42,0.5)]">
                         <div>
                             <p className="text-sm font-semibold text-slate-900">Save after any schedule or target change</p>
-                            <p className="mt-1 text-sm text-slate-600">
+                            <p className="mt-1 hidden text-sm text-slate-600 sm:block">
                                 New posts follow the latest LinkedIn target, timing, tone, and AI defaults only after you save.
                             </p>
                         </div>
                         <button
                             onClick={handleSave}
                             disabled={saving}
-                            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-0 sm:w-auto"
                         >
                             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                             {saving ? 'Saving...' : 'Save Settings'}
@@ -1530,15 +1530,15 @@ function Toggle({ enabled, onChange }: { enabled: boolean; onChange: () => void 
             type="button"
             aria-pressed={enabled}
             onClick={onChange}
-            className={`relative inline-flex h-8 w-16 items-center rounded-full border transition-all ${
+            className={`relative inline-flex h-9 w-[4.5rem] flex-shrink-0 items-center rounded-full border transition-all sm:h-8 sm:w-16 ${
                 enabled
                     ? 'border-emerald-600 bg-emerald-600'
                     : 'border-slate-300 bg-slate-200'
             }`}
         >
             <span
-                className={`absolute top-0.5 h-7 w-7 rounded-full bg-white shadow-sm transition-transform ${
-                    enabled ? 'translate-x-8' : 'translate-x-0.5'
+                className={`absolute top-0.5 h-8 w-8 rounded-full bg-white shadow-sm transition-transform sm:h-7 sm:w-7 ${
+                    enabled ? 'translate-x-8 sm:translate-x-8' : 'translate-x-0.5'
                 }`}
             />
             <span
