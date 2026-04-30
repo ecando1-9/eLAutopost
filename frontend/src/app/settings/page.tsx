@@ -1158,12 +1158,13 @@ export default function SettingsPage() {
                                                 <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
                                                     Post {idx + 1}
                                                 </span>
-                                                <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 focus-within:border-sky-500 focus-within:ring-2 focus-within:ring-sky-100">
+                                                <div className="mt-2 flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 focus-within:border-sky-500 focus-within:ring-2 focus-within:ring-sky-100">
+                                                    <Clock3 className="h-4 w-4 flex-shrink-0 text-slate-400" />
                                                     <input
                                                         type="time"
                                                         value={slotTime}
                                                         onChange={(e) => setSlotTime(idx, e.target.value)}
-                                                        className="w-full bg-transparent text-sm font-semibold text-slate-800 outline-none hover:cursor-pointer [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-70 hover:[&::-webkit-calendar-picker-indicator]:opacity-100"
+                                                        className="w-full min-w-0 bg-transparent text-sm font-semibold text-slate-800 outline-none hover:cursor-pointer [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-70 hover:[&::-webkit-calendar-picker-indicator]:opacity-100"
                                                     />
                                                 </div>
                                             </div>
