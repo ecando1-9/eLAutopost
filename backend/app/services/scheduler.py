@@ -233,25 +233,28 @@ class SchedulerService:
             logger.error(f"Failed to update schedule for user {user_id}: {e}")
             raise Exception("Failed to update posting schedule")
 
-    async def reschedule_future_posts(self, user_id: str, schedule: Dict[str, Any]) -> None:
+    async def reschedule_future_posts(self, user_id: str, schedule: Dict[str, Any]) -> int:
         """
         Re-evaluates and shifts all future posts into the new schedule.
         Essential when user changes their calendar preferences.
         """
         if not schedule.get("is_active"):
             logger.info(f"Schedule for {user_id} is inactive, skipping rescheduling.")
-            return
+            return 0
             
         try:
             # 1. Fetch all future posts (those pending review or already scheduled but not yet posted)
+            now_iso = utc_now().isoformat()
             result = supabase_client.admin.table("posts").select(
                 "id", "status", "scheduled_at"
-            ).eq("user_id", user_id).in_("status", ["pending_review", "scheduled"]).execute()
+            ).eq("user_id", user_id).in_(
+                "status", ["pending_review", "scheduled"]
+            ).gte("scheduled_at", now_iso).execute()
             
             posts = result.data or []
             if not posts:
                 logger.info(f"No future posts to reschedule for user {user_id}")
-                return
+                return 0
             
             logger.info(f"Starting rescheduling of {len(posts)} future posts for user {user_id}")
             
@@ -287,8 +290,10 @@ class SchedulerService:
                 updated_count += 1
 
             logger.info(f"Successfully rescheduled {updated_count} future posts for user {user_id} following schedule update.")
+            return updated_count
         except Exception as e:
             logger.error(f"CRITICAL: Failed to reschedule future posts for {user_id}: {e}", exc_info=True)
+            return 0
 
     async def get_due_posts(self) -> List[Dict[str, Any]]:
         """

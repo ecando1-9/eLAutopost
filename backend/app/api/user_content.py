@@ -182,7 +182,9 @@ async def update_user_schedule(
     try:
         # Read the OLD schedule before overwriting so we can detect time changes
         old_schedule = await scheduler_service.get_user_schedule(user_id)
-        old_time_of_day = (old_schedule or {}).get("time_of_day", "")
+        old_time_of_day = str((old_schedule or {}).get("time_of_day", "") or "")
+        old_days = sorted(str(day).strip().upper() for day in ((old_schedule or {}).get("days_of_week") or []))
+        old_timezone = str((old_schedule or {}).get("timezone", "") or "")
 
         schedule = await scheduler_service.update_user_schedule(
             user_id=user_id,
@@ -194,26 +196,20 @@ async def update_user_schedule(
             auto_topic=body.auto_topic
         )
 
-        # If the user changed their posting times, delete all future auto-generated
-        # posts so they are recreated at the correct new times by the auto-generator.
-        # This prevents stale posts (e.g. 19:20) lingering after the user changed to 19:30.
-        times_changed = body.time_of_day.strip() != old_time_of_day.strip()
-        if times_changed:
-            try:
-                from ..services.database import supabase_client
-                from ..core.datetime_utils import utc_now
-                now_iso = utc_now().isoformat()
-                supabase_client.admin.table("posts").delete().eq(
-                    "user_id", user_id
-                ).in_(
-                    "status", ["scheduled", "pending_review"]
-                ).gte("scheduled_at", now_iso).execute()
-                logger.info(
-                    f"Deleted future auto-posts for user {user_id} "
-                    f"after time change ({old_time_of_day!r} → {body.time_of_day!r})"
-                )
-            except Exception as e:
-                logger.error(f"Failed to delete stale future posts for {user_id}: {e}")
+        # If timing rules changed, move existing future posts onto the new slots.
+        # The generator then only fills missing slots.
+        new_days = sorted(str(day).strip().upper() for day in (body.days_of_week or []))
+        schedule_changed = (
+            body.time_of_day.strip() != old_time_of_day.strip()
+            or new_days != old_days
+            or body.timezone.strip() != old_timezone.strip()
+        )
+        rescheduled_count = 0
+        if schedule_changed and body.is_active:
+            rescheduled_count = await scheduler_service.reschedule_future_posts(
+                user_id=user_id,
+                schedule=schedule,
+            )
 
         if body.is_active and body.auto_topic:
             try:
@@ -226,7 +222,13 @@ async def update_user_schedule(
             "success": True,
             "message": (
                 "Schedule updated successfully. "
-                "Auto-generation has been queued for your upcoming slots."
+                + (
+                    f"{rescheduled_count} future post"
+                    f"{'' if rescheduled_count == 1 else 's'} moved to the new schedule. "
+                    if rescheduled_count
+                    else ""
+                )
+                + "Auto-generation has been queued for your upcoming slots."
                 if body.is_active and body.auto_topic
                 else "Schedule updated successfully"
             ),
