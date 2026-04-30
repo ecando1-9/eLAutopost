@@ -35,6 +35,40 @@ export interface User {
     linkedin_posts: number;
     api_calls: number;
     last_activity?: string;
+    automation?: {
+        linkedin_connected: boolean;
+        linkedin_token_expires_at?: string;
+        auto_post: boolean;
+        max_posts_per_day: number;
+        publish_target: string;
+        organization_id?: string;
+        schedule_active: boolean;
+        auto_topic: boolean;
+        timezone: string;
+        days_of_week: string[];
+        time_of_day?: string;
+        categories: string[];
+        generated_today: number;
+        posted_today: number;
+        queue_total: number;
+        tomorrow_generated: number;
+        tomorrow_in_queue: number;
+        tomorrow_by_status: Record<string, number>;
+        tomorrow_posts: Array<{
+            id: string;
+            status: string;
+            scheduled_at?: string;
+            topic?: string;
+        }>;
+        next_post?: {
+            id: string;
+            status: string;
+            scheduled_at?: string;
+            topic?: string;
+        };
+        health: 'ok' | 'needs_attention' | 'error';
+        reasons: string[];
+    };
 }
 
 export interface RevenueAnalytics {

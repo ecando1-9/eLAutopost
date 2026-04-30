@@ -12,7 +12,12 @@ import {
     Loader2,
     PauseCircle,
     PlayCircle,
-    Clock
+    Clock,
+    CalendarDays,
+    CheckCircle2,
+    ListChecks,
+    Send,
+    Wifi
 } from 'lucide-react';
 import { format } from 'date-fns';
 import Link from 'next/link';
@@ -163,6 +168,8 @@ export default function UserDetailsPage() {
 
     if (!user) return null;
     const displayName = getDisplayName(user);
+    const automation = user.automation;
+    const automationHealthy = automation?.health === 'ok';
 
     return (
         <div className="space-y-6">
@@ -220,6 +227,103 @@ export default function UserDetailsPage() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Subscription Card */}
                 <div className="lg:col-span-2 space-y-6">
+                    {automation && (
+                        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                <div>
+                                    <h3 className="text-lg font-bold text-gray-900 flex items-center">
+                                        <CalendarDays className="h-5 w-5 mr-2 text-emerald-600" />
+                                        Automation Health
+                                    </h3>
+                                    <p className="mt-1 text-sm text-gray-500">
+                                        Schedule, queue, and LinkedIn readiness for this user.
+                                    </p>
+                                </div>
+                                <span className={`inline-flex w-fit items-center rounded-full px-3 py-1 text-xs font-semibold ${
+                                    automationHealthy
+                                        ? 'bg-green-100 text-green-800'
+                                        : 'bg-amber-100 text-amber-800'
+                                }`}>
+                                    {automationHealthy ? 'Ready' : 'Needs attention'}
+                                </span>
+                            </div>
+
+                            <div className="mt-5 grid grid-cols-2 lg:grid-cols-4 gap-4">
+                                <div className="p-4 border rounded-lg">
+                                    <Wifi className={`h-5 w-5 mb-2 ${automation.linkedin_connected ? 'text-green-600' : 'text-red-600'}`} />
+                                    <p className="text-xl font-bold text-gray-900">{automation.linkedin_connected ? 'Yes' : 'No'}</p>
+                                    <p className="text-xs text-gray-500 mt-1">LinkedIn Connected</p>
+                                </div>
+                                <div className="p-4 border rounded-lg">
+                                    <ListChecks className="h-5 w-5 mb-2 text-blue-600" />
+                                    <p className="text-xl font-bold text-gray-900">{automation.max_posts_per_day}</p>
+                                    <p className="text-xs text-gray-500 mt-1">Posts Per Day</p>
+                                </div>
+                                <div className="p-4 border rounded-lg">
+                                    <CheckCircle2 className="h-5 w-5 mb-2 text-indigo-600" />
+                                    <p className="text-xl font-bold text-gray-900">{automation.generated_today}</p>
+                                    <p className="text-xs text-gray-500 mt-1">Generated Today</p>
+                                </div>
+                                <div className="p-4 border rounded-lg">
+                                    <Send className="h-5 w-5 mb-2 text-purple-600" />
+                                    <p className="text-xl font-bold text-gray-900">{automation.posted_today}</p>
+                                    <p className="text-xs text-gray-500 mt-1">Posted Today</p>
+                                </div>
+                            </div>
+
+                            <div className="mt-5 grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="p-4 bg-gray-50 rounded-lg">
+                                    <p className="text-sm text-gray-500">Tomorrow Generated</p>
+                                    <p className="mt-1 text-2xl font-bold text-gray-900">{automation.tomorrow_generated}</p>
+                                </div>
+                                <div className="p-4 bg-gray-50 rounded-lg">
+                                    <p className="text-sm text-gray-500">Tomorrow In Queue</p>
+                                    <p className="mt-1 text-2xl font-bold text-gray-900">{automation.tomorrow_in_queue}</p>
+                                </div>
+                                <div className="p-4 bg-gray-50 rounded-lg">
+                                    <p className="text-sm text-gray-500">Queue Total</p>
+                                    <p className="mt-1 text-2xl font-bold text-gray-900">{automation.queue_total}</p>
+                                </div>
+                            </div>
+
+                            <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="p-4 bg-gray-50 rounded-lg">
+                                    <p className="text-sm font-semibold text-gray-900">Saved Schedule</p>
+                                    <p className="mt-2 text-sm text-gray-600">
+                                        {automation.schedule_active ? 'Active' : 'Inactive'} · {automation.auto_post ? 'Auto-post on' : 'Auto-post off'} · {automation.auto_topic ? 'Auto-topic on' : 'Auto-topic off'}
+                                    </p>
+                                    <p className="mt-1 text-sm text-gray-600">
+                                        {automation.time_of_day || 'No time'} · {automation.days_of_week.join(', ') || 'No days'} · {automation.timezone}
+                                    </p>
+                                </div>
+                                <div className="p-4 bg-gray-50 rounded-lg">
+                                    <p className="text-sm font-semibold text-gray-900">Next Post</p>
+                                    {automation.next_post?.scheduled_at ? (
+                                        <>
+                                            <p className="mt-2 text-sm text-gray-900">{automation.next_post.topic || 'Untitled post'}</p>
+                                            <p className="mt-1 text-xs text-gray-500">
+                                                {format(new Date(automation.next_post.scheduled_at), 'PPP p')} · {automation.next_post.status}
+                                            </p>
+                                        </>
+                                    ) : (
+                                        <p className="mt-2 text-sm text-gray-500">No upcoming scheduled post.</p>
+                                    )}
+                                </div>
+                            </div>
+
+                            {automation.reasons.length > 0 && (
+                                <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-4">
+                                    <p className="text-sm font-semibold text-amber-900">Why generation may not happen</p>
+                                    <ul className="mt-2 space-y-1 text-sm text-amber-800">
+                                        {automation.reasons.map((reason) => (
+                                            <li key={reason}>{reason}</li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
                         <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
                             <CreditCard className="h-5 w-5 mr-2 text-blue-600" />

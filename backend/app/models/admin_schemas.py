@@ -5,7 +5,7 @@ Models for admin API requests and responses.
 """
 
 from pydantic import BaseModel, Field, validator
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 from enum import Enum
 from ..core.security import sanitize_input
@@ -72,6 +72,7 @@ class AdminUserResponse(BaseModel):
     api_calls: int = 0
     last_activity: Optional[datetime]
     status_label: str
+    automation: Optional[Dict[str, Any]] = None
 
 
 class BlockUserRequest(BaseModel):

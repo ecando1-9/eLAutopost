@@ -11,7 +11,7 @@ Follow these steps to get the application up and running on your local machine.
 
 Open a terminal and navigate to the `backend` folder:
 
-```powershell
+```powershellh
 cd backend
 ```
 

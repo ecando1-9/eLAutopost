@@ -15,7 +15,8 @@ Security:
 """
 
 from typing import Dict, Any, List, Optional
-from datetime import timedelta
+from datetime import datetime, time, timedelta
+import pytz
 from ..core.config import logger
 from ..core.datetime_utils import utc_now, parse_datetime_utc
 from ..services.database import supabase_client, normalize_full_name
@@ -128,6 +129,154 @@ class AdminService:
             patch["renewal_date"] = (subscription_start + timedelta(days=30)).isoformat()
 
         return patch
+
+    @staticmethod
+    def _count_rows(result: Any) -> int:
+        """Return Supabase exact count when present, otherwise data length."""
+        count = getattr(result, "count", None)
+        if count is not None:
+            return int(count)
+        return len(result.data or [])
+
+    @staticmethod
+    def _local_day_bounds(day, timezone_name: str) -> tuple[str, str]:
+        """Return UTC ISO bounds for a local calendar day."""
+        try:
+            user_tz = pytz.timezone(timezone_name or "Asia/Kolkata")
+        except Exception:
+            user_tz = pytz.timezone("Asia/Kolkata")
+
+        start_local = user_tz.localize(datetime.combine(day, time.min), is_dst=False)
+        end_local = start_local + timedelta(days=1)
+        return (
+            start_local.astimezone(pytz.UTC).isoformat(),
+            end_local.astimezone(pytz.UTC).isoformat(),
+        )
+
+    async def get_user_automation_diagnostics(self, user_id: str) -> Dict[str, Any]:
+        """Build an admin-facing automation health snapshot for one user."""
+        try:
+            schedule_result = supabase_client.admin.table("posting_schedules").select(
+                "*"
+            ).eq("user_id", user_id).limit(1).execute()
+            schedule = schedule_result.data[0] if schedule_result.data else None
+
+            settings_result = supabase_client.admin.table("settings").select(
+                "auto_post,max_posts_per_day,publish_target,organization_id"
+            ).eq("user_id", user_id).limit(1).execute()
+            settings = settings_result.data[0] if settings_result.data else {}
+
+            token_result = supabase_client.admin.table("linkedin_tokens").select(
+                "expires_at"
+            ).eq("user_id", user_id).order("expires_at", desc=True).limit(1).execute()
+            token = token_result.data[0] if token_result.data else None
+            token_expires_at = token.get("expires_at") if token else None
+            linkedin_connected = bool(
+                token_expires_at and parse_datetime_utc(token_expires_at)
+                and parse_datetime_utc(token_expires_at) > utc_now()
+            )
+
+            timezone_name = (
+                schedule.get("timezone")
+                if schedule
+                else "Asia/Kolkata"
+            ) or "Asia/Kolkata"
+            try:
+                user_tz = pytz.timezone(timezone_name)
+            except Exception:
+                user_tz = pytz.timezone("Asia/Kolkata")
+                timezone_name = "Asia/Kolkata"
+
+            today = utc_now().astimezone(user_tz).date()
+            tomorrow = today + timedelta(days=1)
+            today_start, today_end = self._local_day_bounds(today, timezone_name)
+            tomorrow_start, tomorrow_end = self._local_day_bounds(tomorrow, timezone_name)
+
+            generated_today = self._count_rows(
+                supabase_client.admin.table("posts").select("id", count="exact").eq(
+                    "user_id", user_id
+                ).gte("created_at", today_start).lt("created_at", today_end).execute()
+            )
+            posted_today = self._count_rows(
+                supabase_client.admin.table("posts").select("id", count="exact").eq(
+                    "user_id", user_id
+                ).eq("status", "posted").gte("posted_at", today_start).lt(
+                    "posted_at", today_end
+                ).execute()
+            )
+            tomorrow_result = supabase_client.admin.table("posts").select(
+                "id,status,scheduled_at,topic"
+            ).eq("user_id", user_id).gte("scheduled_at", tomorrow_start).lt(
+                "scheduled_at", tomorrow_end
+            ).order("scheduled_at").execute()
+            tomorrow_posts = tomorrow_result.data or []
+
+            queue_statuses = {"draft", "pending_review", "scheduled", "running"}
+            tomorrow_by_status: Dict[str, int] = {}
+            for post in tomorrow_posts:
+                status = str(post.get("status") or "unknown")
+                tomorrow_by_status[status] = tomorrow_by_status.get(status, 0) + 1
+
+            queue_today = self._count_rows(
+                supabase_client.admin.table("posts").select("id", count="exact").eq(
+                    "user_id", user_id
+                ).in_("status", list(queue_statuses)).execute()
+            )
+
+            next_post_result = supabase_client.admin.table("posts").select(
+                "id,status,scheduled_at,topic"
+            ).eq("user_id", user_id).in_("status", ["scheduled", "pending_review"]).gte(
+                "scheduled_at", utc_now().isoformat()
+            ).order("scheduled_at").limit(1).execute()
+            next_post = next_post_result.data[0] if next_post_result.data else None
+
+            reasons: List[str] = []
+            if not linkedin_connected:
+                reasons.append("LinkedIn is not connected or token expired.")
+            if not bool(settings.get("auto_post")):
+                reasons.append("Auto-post is off in settings.")
+            if not schedule:
+                reasons.append("No posting schedule is saved.")
+            elif not schedule.get("is_active"):
+                reasons.append("Posting schedule is inactive.")
+            elif not schedule.get("auto_topic"):
+                reasons.append("Auto-topic generation is off.")
+            if schedule and not (schedule.get("days_of_week") or []):
+                reasons.append("No schedule days are selected.")
+
+            return {
+                "linkedin_connected": linkedin_connected,
+                "linkedin_token_expires_at": token_expires_at,
+                "auto_post": bool(settings.get("auto_post")),
+                "max_posts_per_day": int(settings.get("max_posts_per_day") or 1),
+                "publish_target": settings.get("publish_target") or "person",
+                "organization_id": settings.get("organization_id"),
+                "schedule_active": bool(schedule and schedule.get("is_active")),
+                "auto_topic": bool(schedule and schedule.get("auto_topic")),
+                "timezone": timezone_name,
+                "days_of_week": (schedule or {}).get("days_of_week") or [],
+                "time_of_day": (schedule or {}).get("time_of_day"),
+                "categories": (schedule or {}).get("categories") or [],
+                "generated_today": generated_today,
+                "posted_today": posted_today,
+                "queue_total": queue_today,
+                "tomorrow_generated": len(tomorrow_posts),
+                "tomorrow_in_queue": len([
+                    post for post in tomorrow_posts
+                    if str(post.get("status") or "") in queue_statuses
+                ]),
+                "tomorrow_by_status": tomorrow_by_status,
+                "tomorrow_posts": tomorrow_posts[:5],
+                "next_post": next_post,
+                "health": "ok" if not reasons else "needs_attention",
+                "reasons": reasons,
+            }
+        except Exception as e:
+            logger.error(f"Failed to build automation diagnostics for {user_id}: {e}")
+            return {
+                "health": "error",
+                "reasons": ["Could not load automation diagnostics."],
+            }
     
     # =========================================================================
     # USER MANAGEMENT
@@ -212,7 +361,9 @@ class AdminService:
             if not result.data:
                 raise Exception("User not found")
 
-            return self._normalize_user_row(result.data)
+            user = self._normalize_user_row(result.data)
+            user["automation"] = await self.get_user_automation_diagnostics(user_id)
+            return user
             
         except Exception as e:
             logger.error(f"Failed to get user details: {e}")

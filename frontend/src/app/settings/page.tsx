@@ -625,48 +625,47 @@ export default function SettingsPage() {
             const { data: { session } } = await supabase.auth.getSession();
             const token = session?.access_token;
 
-            const [settingsRes, scheduleRes] = await Promise.all([
-                fetch('/api/v1/settings', {
-                    method: 'PATCH',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({
-                        default_tone: defaultTone,
-                        auto_post: isActive,
-                        notification_email: notificationEmail,
-                        preferred_content_types: preferredContentTypes,
-                        default_goal: defaultGoal,
-                        default_audience: defaultAudience,
-                        default_style: defaultStyle,
-                        emoji_density: emojiDensity,
-                        auto_format_reach: autoFormatReach,
-                        publish_target: targetMode,
-                        organization_id: organizationId.trim() || null,
-                        max_posts_per_day: maxPostsPerDay,
-                    }),
+            const settingsRes = await fetch('/api/v1/settings', {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    default_tone: defaultTone,
+                    auto_post: isActive,
+                    notification_email: notificationEmail,
+                    preferred_content_types: preferredContentTypes,
+                    default_goal: defaultGoal,
+                    default_audience: defaultAudience,
+                    default_style: defaultStyle,
+                    emoji_density: emojiDensity,
+                    auto_format_reach: autoFormatReach,
+                    publish_target: targetMode,
+                    organization_id: organizationId.trim() || null,
+                    max_posts_per_day: maxPostsPerDay,
                 }),
-                fetch('/api/v1/user/schedule', {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({
-                        days_of_week: scheduleDays,
-                        time_of_day: timeOfDay,
-                        timezone,
-                        is_active: isActive,
-                        categories: normalizedSelectedCategories,
-                        auto_topic: autoTopic,
-                    }),
-                }),
-            ]);
+            });
 
             if (!settingsRes.ok) {
                 throw new Error(await readErrorMessage(settingsRes));
             }
+
+            const scheduleRes = await fetch('/api/v1/user/schedule', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    days_of_week: scheduleDays,
+                    time_of_day: timeOfDay,
+                    timezone,
+                    is_active: isActive,
+                    categories: normalizedSelectedCategories,
+                    auto_topic: autoTopic,
+                }),
+            });
 
             if (!scheduleRes.ok) {
                 throw new Error(await readErrorMessage(scheduleRes));

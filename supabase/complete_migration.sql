@@ -142,7 +142,7 @@ CREATE TABLE IF NOT EXISTS posting_schedules (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     days_of_week TEXT[] NOT NULL, -- Array of days e.g. ['MON', 'WED', 'FRI']
-    time_of_day TIME NOT NULL,
+    time_of_day TEXT NOT NULL,
     timezone VARCHAR(50) NOT NULL DEFAULT 'UTC',
     is_active BOOLEAN DEFAULT FALSE,
     categories TEXT[] DEFAULT '{}', -- Preferred categories for rotation
