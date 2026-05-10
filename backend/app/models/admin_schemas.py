@@ -37,6 +37,7 @@ class AdminAction(str, Enum):
     USER_SUSPENDED = "user_suspended"
     USER_RESUMED = "user_resumed"
     TRIAL_EXTENDED = "trial_extended"
+    TRIAL_SET = "trial_set"
     SUBSCRIPTION_ACTIVATED = "subscription_activated"
     SUBSCRIPTION_CANCELLED = "subscription_cancelled"
     SUBSCRIPTION_ON_HOLD = "subscription_on_hold"
@@ -136,6 +137,20 @@ class ExtendTrialRequest(BaseModel):
     """Request to extend user's trial."""
     user_id: str = Field(..., description="User ID")
     days: int = Field(..., ge=1, le=365, description="Number of days to extend (1-365)")
+
+
+class SetTrialRequest(BaseModel):
+    """Request to place a user on a fresh trial period."""
+    user_id: str = Field(..., description="User ID")
+    days: int = Field(..., ge=1, le=365, description="Trial length in days (1-365)")
+    reason: Optional[str] = Field(None, max_length=500, description="Reason for granting trial")
+
+    @validator("reason")
+    def sanitize_trial_reason(cls, v):
+        """Sanitize reason text."""
+        if v:
+            return sanitize_input(v, max_length=500)
+        return v
 
 
 class ActivateSubscriptionRequest(BaseModel):
@@ -284,6 +299,17 @@ class DashboardStatsResponse(BaseModel):
     mrr: float  # Monthly Recurring Revenue
     new_users_this_month: int
     new_subscribers_this_month: int
+
+
+class SystemInsightResponse(BaseModel):
+    """Operational health snapshot for admins."""
+    payment_failures_24h: int
+    failed_posts_24h: int
+    webhook_events_24h: int
+    admin_actions_24h: int
+    recent_payment_errors: List[Dict[str, Any]]
+    recent_post_errors: List[Dict[str, Any]]
+    recent_webhook_events: List[Dict[str, Any]]
 
 
 class RevenueAnalyticsResponse(BaseModel):

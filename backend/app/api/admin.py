@@ -25,6 +25,7 @@ from ..models.admin_schemas import (
     ResumeUserRequest,
     SubscriptionResponse,
     ExtendTrialRequest,
+    SetTrialRequest,
     ActivateSubscriptionRequest,
     CancelSubscriptionRequest,
     HoldSubscriptionRequest,
@@ -39,6 +40,7 @@ from ..models.admin_schemas import (
     DashboardStatsResponse,
     RevenueAnalyticsResponse,
     UsageAnalyticsResponse,
+    SystemInsightResponse,
     AuditLogResponse,
     AdminPaginatedUsersResponse,
     AdminPaginatedLogsResponse,
@@ -332,6 +334,30 @@ async def unblock_user(
         )
 
 
+@router.get("/system/insights", response_model=SystemInsightResponse)
+@limiter.limit("60/minute")
+async def get_system_insights(
+    request: Request,
+    admin_id: str = Depends(require_admin)
+):
+    """
+    Get operational health signals for admins.
+
+    Returns recent payment failures, post failures, webhook activity, and admin
+    action volume so support issues are visible from the admin panel.
+    """
+    try:
+        insights = await admin_service.get_system_insights()
+        return SystemInsightResponse(**insights)
+
+    except Exception as e:
+        logger.error(f"Failed to get system insights: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve system insights"
+        )
+
+
 @router.post("/users/suspend")
 @limiter.limit("10/minute")
 async def suspend_user(
@@ -546,6 +572,44 @@ async def cancel_subscription(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to cancel subscription"
+        )
+
+
+@router.post("/subscriptions/set-trial")
+@limiter.limit("10/minute")
+async def set_trial(
+    request: Request,
+    trial_request: SetTrialRequest,
+    admin_data: tuple = Depends(get_admin_with_ip)
+):
+    """
+    Put a user on a fresh trial period.
+
+    This can be used for expired/cancelled users or support recovery cases where
+    the account should return to trial access from today.
+    """
+    admin_id, ip_address = admin_data
+
+    try:
+        result = await admin_service.set_trial(
+            admin_id=admin_id,
+            user_id=trial_request.user_id,
+            days=trial_request.days,
+            reason=trial_request.reason,
+            ip_address=ip_address
+        )
+
+        return {
+            "success": True,
+            "message": f"User trial set for {trial_request.days} days",
+            "subscription": result
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to set trial: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to set trial"
         )
 
 

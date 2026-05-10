@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { adminService, DashboardStats, RevenueAnalytics, UsageAnalytics } from '@/services/admin';
+import { adminService, DashboardStats, RevenueAnalytics, SystemInsight, UsageAnalytics } from '@/services/admin';
 import {
     Users,
     CreditCard,
@@ -10,27 +10,34 @@ import {
     ArrowUpRight,
     Activity,
     IndianRupee,
-    RefreshCw
+    RefreshCw,
+    ShieldAlert,
+    Receipt,
+    Send,
+    Webhook
 } from 'lucide-react';
 
 export default function DashboardPage() {
     const [stats, setStats] = useState<DashboardStats | null>(null);
     const [revenue, setRevenue] = useState<RevenueAnalytics[]>([]);
     const [usage, setUsage] = useState<UsageAnalytics[]>([]);
+    const [insights, setInsights] = useState<SystemInsight | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
     const fetchStats = async () => {
         setIsLoading(true);
         try {
-            const [statsData, revenueData, usageData] = await Promise.all([
+            const [statsData, revenueData, usageData, insightData] = await Promise.all([
                 adminService.getDashboardStats(),
                 adminService.getRevenueAnalytics(),
                 adminService.getUsageAnalytics(),
+                adminService.getSystemInsights(),
             ]);
             setStats(statsData);
             setRevenue(revenueData.slice().reverse().slice(-6));
             setUsage(usageData.slice().reverse().slice(-14));
+            setInsights(insightData);
             setLastUpdated(new Date());
         } catch (error) {
             console.error('Failed to fetch dashboard stats:', error);
@@ -94,6 +101,36 @@ export default function DashboardPage() {
     const totalRevenue = revenue.reduce((sum, row) => sum + (Number(row.revenue) || 0), 0);
     const totalPosts = usage.reduce((sum, row) => sum + (Number(row.total_posts) || 0), 0);
     const totalPublished = usage.reduce((sum, row) => sum + (Number(row.total_linkedin_posts) || 0), 0);
+    const riskCards = insights ? [
+        {
+            label: 'Payment failures',
+            value: insights.payment_failures_24h,
+            detail: 'Last 24 hours',
+            icon: Receipt,
+            color: insights.payment_failures_24h ? 'text-red-600 bg-red-50' : 'text-emerald-600 bg-emerald-50',
+        },
+        {
+            label: 'Post failures',
+            value: insights.failed_posts_24h,
+            detail: 'Needs support review',
+            icon: Send,
+            color: insights.failed_posts_24h ? 'text-amber-600 bg-amber-50' : 'text-emerald-600 bg-emerald-50',
+        },
+        {
+            label: 'Webhook events',
+            value: insights.webhook_events_24h,
+            detail: 'Razorpay callbacks',
+            icon: Webhook,
+            color: 'text-sky-600 bg-sky-50',
+        },
+        {
+            label: 'Admin actions',
+            value: insights.admin_actions_24h,
+            detail: 'Operational changes',
+            icon: ShieldAlert,
+            color: 'text-violet-600 bg-violet-50',
+        },
+    ] : [];
 
     return (
         <div className="space-y-6">
@@ -229,6 +266,78 @@ export default function DashboardPage() {
                     </div>
                 </div>
             </div>
+
+            {insights && (
+                <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 xl:col-span-1">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h3 className="text-base font-semibold text-gray-900">System Health</h3>
+                                <p className="text-sm text-gray-500">Errors and operational activity</p>
+                            </div>
+                            <ShieldAlert className="h-5 w-5 text-gray-500" />
+                        </div>
+                        <div className="mt-5 grid grid-cols-2 gap-3">
+                            {riskCards.map((item) => {
+                                const Icon = item.icon;
+                                return (
+                                    <div key={item.label} className="rounded-lg border border-gray-200 p-4">
+                                        <div className={`inline-flex rounded-md p-2 ${item.color}`}>
+                                            <Icon className="h-4 w-4" />
+                                        </div>
+                                        <p className="mt-3 text-2xl font-bold text-gray-900">{item.value}</p>
+                                        <p className="text-xs font-semibold text-gray-600">{item.label}</p>
+                                        <p className="mt-1 text-xs text-gray-400">{item.detail}</p>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 xl:col-span-2">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h3 className="text-base font-semibold text-gray-900">Recent Failure Log</h3>
+                                <p className="text-sm text-gray-500">Payment and publishing errors captured by the system</p>
+                            </div>
+                        </div>
+                        <div className="mt-5 divide-y divide-gray-100 rounded-lg border border-gray-200">
+                            {[...insights.recent_payment_errors, ...insights.recent_post_errors].length === 0 ? (
+                                <div className="p-5 text-sm text-gray-500">No recent failures recorded.</div>
+                            ) : (
+                                [...insights.recent_payment_errors.map((item) => ({
+                                    id: item.id,
+                                    type: 'Payment',
+                                    message: item.error_message || 'Payment failed',
+                                    time: item.updated_at || item.created_at,
+                                    meta: item.razorpay_order_id || item.user_id,
+                                })), ...insights.recent_post_errors.map((item) => ({
+                                    id: item.id,
+                                    type: 'Post',
+                                    message: item.error_message || 'Post failed',
+                                    time: item.updated_at || item.created_at,
+                                    meta: item.topic || item.user_id,
+                                }))].slice(0, 8).map((item) => (
+                                    <div key={`${item.type}-${item.id}`} className="grid gap-2 p-4 sm:grid-cols-[7rem_1fr_9rem] sm:items-center">
+                                        <span className={`w-fit rounded-full px-2.5 py-1 text-xs font-semibold ${
+                                            item.type === 'Payment' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'
+                                        }`}>
+                                            {item.type}
+                                        </span>
+                                        <div className="min-w-0">
+                                            <p className="truncate text-sm font-medium text-gray-900">{item.message}</p>
+                                            <p className="truncate text-xs text-gray-500">{item.meta || 'No reference'}</p>
+                                        </div>
+                                        <span className="text-xs text-gray-400 sm:text-right">
+                                            {item.time ? new Date(item.time).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}
+                                        </span>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

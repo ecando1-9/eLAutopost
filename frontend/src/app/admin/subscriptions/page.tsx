@@ -136,8 +136,19 @@ export default function SubscriptionsPage() {
 
     const runAction = async (
         userId: string,
-        action: 'hold' | 'resume' | 'activate' | 'suspend' | 'unsuspend'
+        action: 'hold' | 'resume' | 'activate' | 'suspend' | 'unsuspend' | 'setTrial'
     ) => {
+        let trialDays = 14;
+        if (action === 'setTrial') {
+            const value = window.prompt('Set trial length in days', '14');
+            if (!value) return;
+            trialDays = Number(value);
+            if (!Number.isFinite(trialDays) || trialDays < 1 || trialDays > 365) {
+                alert('Enter a trial length between 1 and 365 days.');
+                return;
+            }
+        }
+
         setActionUserId(userId);
         try {
             if (action === 'hold') {
@@ -150,6 +161,8 @@ export default function SubscriptionsPage() {
                 await adminService.suspendUser(userId, 'Admin suspension');
             } else if (action === 'unsuspend') {
                 await adminService.resumeUser(userId);
+            } else if (action === 'setTrial') {
+                await adminService.setTrial(userId, trialDays, 'Admin granted trial access');
             }
             await fetchSubscriptions();
         } catch (error) {
@@ -401,8 +414,14 @@ export default function SubscriptionsPage() {
                                             </div>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
-                                            <div className="text-sm text-gray-900 font-medium">Monthly Pro</div>
-                                            <div className="text-xs text-gray-500">INR 299/mo</div>
+                                            <div className="text-sm text-gray-900 font-medium">
+                                                {user.subscription_status === 'trial' ? 'Trial Access' : 'Paid Access'}
+                                            </div>
+                                            <div className="text-xs text-gray-500">
+                                                {user.subscription_status === 'trial'
+                                                    ? 'Admin/user trial'
+                                                    : `INR ${Number(user.price || 0).toLocaleString()} / period`}
+                                            </div>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <span className={`px-2.5 py-0.5 inline-flex items-center text-xs font-medium rounded-full border ${getStatusColor(user.subscription_status)} capitalize`}>
@@ -463,6 +482,17 @@ export default function SubscriptionsPage() {
                                                             Activate
                                                         </button>
                                                     </>
+                                                )}
+                                                {user.subscription_status !== 'trial' && (
+                                                    <button
+                                                        type="button"
+                                                        disabled={actionUserId === user.id}
+                                                        onClick={() => runAction(user.id, 'setTrial')}
+                                                        className="inline-flex items-center gap-1 rounded-md border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-700 hover:bg-sky-100 disabled:opacity-60"
+                                                    >
+                                                        {actionUserId === user.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CreditCard className="h-3.5 w-3.5" />}
+                                                        Set Trial
+                                                    </button>
                                                 )}
                                                 {user.subscription_status === 'blocked' ? (
                                                     <button

@@ -660,6 +660,73 @@ class AdminService:
         except Exception as e:
             logger.error(f"Failed to extend trial: {e}")
             raise Exception("Failed to extend trial")
+
+    async def set_trial(
+        self,
+        admin_id: str,
+        user_id: str,
+        days: int,
+        reason: Optional[str] = None,
+        ip_address: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Place a user on a fresh trial period starting now.
+
+        Unlike extend_trial, this deliberately resets the trial window and clears
+        paid renewal dates so support can move expired or cancelled users back
+        into trial access.
+        """
+        try:
+            now = utc_now()
+            trial_end = now + timedelta(days=days)
+            update_payload: Dict[str, Any] = {
+                "status": "trial",
+                "trial_start": now.isoformat(),
+                "trial_end": trial_end.isoformat(),
+                "subscription_start": None,
+                "renewal_date": None,
+                "last_payment_date": None,
+            }
+
+            existing = supabase_client.admin.table("subscriptions").select(
+                "user_id"
+            ).eq("user_id", user_id).limit(1).execute()
+
+            if existing.data:
+                result = supabase_client.admin.table("subscriptions").update(
+                    update_payload
+                ).eq("user_id", user_id).execute()
+            else:
+                result = supabase_client.admin.table("subscriptions").insert({
+                    "user_id": user_id,
+                    "plan_name": "trial",
+                    "price": 0,
+                    "currency": "INR",
+                    **update_payload,
+                }).execute()
+
+            await self.log_admin_action(
+                admin_id=admin_id,
+                action="trial_set",
+                target_user_id=user_id,
+                details={
+                    "days": days,
+                    "reason": reason,
+                    "trial_start": now.isoformat(),
+                    "trial_end": trial_end.isoformat(),
+                },
+                ip_address=ip_address
+            )
+
+            logger.info(
+                f"Trial set for user {user_id} for {days} days (admin: {admin_id})"
+            )
+
+            return result.data[0] if result.data else update_payload
+
+        except Exception as e:
+            logger.error(f"Failed to set trial: {e}")
+            raise Exception("Failed to set trial")
     
     async def activate_subscription(
         self,
@@ -1244,6 +1311,65 @@ class AdminService:
         except Exception as e:
             logger.error(f"Failed to get usage analytics: {e}")
             raise Exception("Failed to retrieve usage analytics")
+
+    async def get_system_insights(self) -> Dict[str, Any]:
+        """
+        Return recent operational signals for the admin dashboard.
+
+        These are intentionally derived from tables the app already writes to:
+        billing_payments for Razorpay failures, posts for content/publishing
+        failures, billing_webhook_events for gateway activity, and admin audit
+        logs for operator activity.
+        """
+        try:
+            since = utc_now() - timedelta(hours=24)
+            since_iso = since.isoformat()
+
+            payment_failures_result = supabase_client.admin.table(
+                "billing_payments"
+            ).select(
+                "id,user_id,status,amount,currency,razorpay_order_id,"
+                "razorpay_payment_id,error_message,created_at,updated_at",
+                count="exact"
+            ).eq("status", "failed").gte("updated_at", since_iso).order(
+                "updated_at", desc=True
+            ).limit(5).execute()
+
+            failed_posts_result = supabase_client.admin.table("posts").select(
+                "id,user_id,topic,status,error_message,created_at,updated_at",
+                count="exact"
+            ).eq("status", "failed").gte("updated_at", since_iso).order(
+                "updated_at", desc=True
+            ).limit(5).execute()
+
+            webhook_events_result = supabase_client.admin.table(
+                "billing_webhook_events"
+            ).select(
+                "id,provider,event_id,event_type,created_at",
+                count="exact"
+            ).gte("created_at", since_iso).order(
+                "created_at", desc=True
+            ).limit(5).execute()
+
+            admin_actions_result = supabase_client.admin.table(
+                "admin_audit_logs"
+            ).select("id", count="exact").gte(
+                "created_at", since_iso
+            ).execute()
+
+            return {
+                "payment_failures_24h": self._count_rows(payment_failures_result),
+                "failed_posts_24h": self._count_rows(failed_posts_result),
+                "webhook_events_24h": self._count_rows(webhook_events_result),
+                "admin_actions_24h": self._count_rows(admin_actions_result),
+                "recent_payment_errors": payment_failures_result.data or [],
+                "recent_post_errors": failed_posts_result.data or [],
+                "recent_webhook_events": webhook_events_result.data or [],
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to get system insights: {e}")
+            raise Exception("Failed to retrieve system insights")
     
     # =========================================================================
     # AUDIT LOGS

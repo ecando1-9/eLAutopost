@@ -30,6 +30,7 @@ export interface User {
     trial_end?: string;
     subscription_start?: string;
     renewal_date?: string;
+    price?: number;
     posts_generated: number;
     images_generated: number;
     linkedin_posts: number;
@@ -87,6 +88,41 @@ export interface UsageAnalytics {
     total_api_calls: number;
 }
 
+export interface SystemInsight {
+    payment_failures_24h: number;
+    failed_posts_24h: number;
+    webhook_events_24h: number;
+    admin_actions_24h: number;
+    recent_payment_errors: Array<{
+        id: string;
+        user_id?: string;
+        status: string;
+        amount?: number;
+        currency?: string;
+        razorpay_order_id?: string;
+        razorpay_payment_id?: string;
+        error_message?: string;
+        created_at?: string;
+        updated_at?: string;
+    }>;
+    recent_post_errors: Array<{
+        id: string;
+        user_id?: string;
+        topic?: string;
+        status: string;
+        error_message?: string;
+        created_at?: string;
+        updated_at?: string;
+    }>;
+    recent_webhook_events: Array<{
+        id: string;
+        provider: string;
+        event_id?: string;
+        event_type: string;
+        created_at: string;
+    }>;
+}
+
 export interface BillingPlanSettings {
     plan_name: string;
     display_name: string;
@@ -134,6 +170,11 @@ export const adminService = {
 
     getUsageAnalytics: async () => {
         const { data } = await api.get<UsageAnalytics[]>('/admin/analytics/usage');
+        return data;
+    },
+
+    getSystemInsights: async () => {
+        const { data } = await api.get<SystemInsight>('/admin/system/insights');
         return data;
     },
 
@@ -189,6 +230,15 @@ export const adminService = {
         const { data } = await api.post('/admin/subscriptions/extend-trial', {
             user_id: userId,
             days,
+        });
+        return data;
+    },
+
+    setTrial: async (userId: string, days: number, reason?: string) => {
+        const { data } = await api.post('/admin/subscriptions/set-trial', {
+            user_id: userId,
+            days,
+            reason,
         });
         return data;
     },

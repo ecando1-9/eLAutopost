@@ -30,6 +30,7 @@ export default function UserDetailsPage() {
     const [user, setUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isProcessing, setIsProcessing] = useState(false);
+    const [trialDays, setTrialDays] = useState(14);
 
     const getDisplayName = (targetUser: User) => {
         const raw = (targetUser.full_name || '').trim();
@@ -67,13 +68,21 @@ export default function UserDetailsPage() {
         if (userId) fetchUser();
     }, [userId]);
 
+    const getTrialDays = () => {
+        if (!Number.isFinite(trialDays) || trialDays < 1 || trialDays > 365) {
+            alert('Enter a trial length between 1 and 365 days.');
+            return null;
+        }
+        return Math.round(trialDays);
+    };
+
     const handleExtendTrial = async () => {
-        const days = prompt('How many days to extend the trial?', '7');
+        const days = getTrialDays();
         if (!days) return;
 
         setIsProcessing(true);
         try {
-            await adminService.extendTrial(userId, parseInt(days));
+            await adminService.extendTrial(userId, days);
             fetchUser();
             alert('Trial extended successfully');
         } catch (error) {
@@ -114,6 +123,24 @@ export default function UserDetailsPage() {
             fetchUser();
         } catch (error) {
             alert('Action failed');
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    const handleSetTrial = async () => {
+        const days = getTrialDays();
+        if (!days) return;
+
+        if (!confirm(`Set this user to a fresh ${days}-day trial?`)) return;
+
+        setIsProcessing(true);
+        try {
+            await adminService.setTrial(userId, days, 'Admin granted trial access');
+            fetchUser();
+            alert('Trial access set successfully');
+        } catch (error) {
+            alert('Failed to set trial');
         } finally {
             setIsProcessing(false);
         }
@@ -330,6 +357,44 @@ export default function UserDetailsPage() {
                             Subscription Details
                         </h3>
 
+                        <div className="mb-5 rounded-lg border border-sky-200 bg-sky-50 p-4">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                                <div>
+                                    <p className="text-sm font-semibold text-sky-950">Trial Controls</p>
+                                    <p className="mt-1 text-sm text-sky-700">
+                                        Extend the current trial or reset this user to a fresh trial window.
+                                    </p>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <label className="text-xs font-semibold text-sky-900">
+                                        Days
+                                        <input
+                                            type="number"
+                                            min={1}
+                                            max={365}
+                                            value={trialDays}
+                                            onChange={(event) => setTrialDays(Number(event.target.value))}
+                                            className="ml-2 w-20 rounded-md border border-sky-200 bg-white px-2 py-1.5 text-sm text-gray-900"
+                                        />
+                                    </label>
+                                    <button
+                                        onClick={handleExtendTrial}
+                                        disabled={isProcessing}
+                                        className="rounded-md border border-sky-200 bg-white px-3 py-2 text-sm font-semibold text-sky-700 hover:bg-sky-100 disabled:opacity-50"
+                                    >
+                                        Extend Trial
+                                    </button>
+                                    <button
+                                        onClick={handleSetTrial}
+                                        disabled={isProcessing}
+                                        className="rounded-md bg-sky-600 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-50"
+                                    >
+                                        Set To Trial
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="p-4 bg-gray-50 rounded-lg">
                                 <p className="text-sm text-gray-500 mb-1">Current Status</p>
@@ -378,13 +443,6 @@ export default function UserDetailsPage() {
                                         Trial ends {user.trial_end ? format(new Date(user.trial_end), 'PPP') : 'N/A'}
                                     </p>
                                     <div className="flex gap-3">
-                                        <button
-                                            onClick={handleExtendTrial}
-                                            disabled={isProcessing}
-                                            className="text-sm text-blue-600 hover:text-blue-800 font-medium disabled:opacity-50"
-                                        >
-                                            + Extend Trial
-                                        </button>
                                         <button
                                             onClick={handleHoldSubscription}
                                             disabled={isProcessing}
